@@ -394,6 +394,7 @@ function speak(text, slow) {
   if (!TTS || !text) return;
   try {
     speechSynthesis.cancel();
+    if (LATIN.test(text)) text = termInfo(text).vars.join(', ');
     const u = new SpeechSynthesisUtterance(text);
     const ko = HANGUL.test(text) && !LATIN.test(text);
     u.lang = ko ? 'ko-KR' : 'en-US';
@@ -499,7 +500,82 @@ function parseText(text) {
   return out;
 }
 
-function kindOf(t) { const n = words(t).length; return (n >= 4 || (n >= 3 && /[.?!]$/.test(t))) ? 's' : 'w'; }
+/* ---------- answer forms: "look/watch", "take care of + 명사", "brother and sister" ---------- */
+const PH = /^(?:n|v|a|o|s|adj|adv|sb|sth|sb's|one's|oneself|someone|something|somebody|n\.|v\.|-?ing|v-?ing|to-?v|to\s+v|to\s+do|do|동사원형|명사|동사|동명사|형용사|부사|사람|사물|목적어|절)$/i;
+function isPlaceholder(seg) {
+  const x = seg.trim().replace(/^[(\[]+|[)\]]+$/g, '').trim();
+  return !x || PH.test(x) || HANGUL.test(x) || /^[~\-]/.test(x) || x.includes('~');
+}
+// "take care of + 명사" -> "take care of";  "make + up" -> "make up"
+const stripPlus = t => t.split('+').map((seg, i) => i === 0 ? seg : (isPlaceholder(seg) ? '' : ' ' + seg)).join('').replace(/\s+/g, ' ').trim();
+// "a/an" -> [a, an];  "look at/for" -> [look at, look for];  "be interested in/be into" -> [be interested in, be into]
+function expandSlash(s) {
+  s = s.replace(/\s*\/\s*/g, m => /\s/.test(m) ? ' / ' : '/');
+  let parts = s.split(' / ').map(x => x.trim()).filter(Boolean);
+  const wc = parts.map(x => words(x).length);
+  if (parts.length > 1 && wc.some(n => n === 1) && wc.some(n => n > 1)) parts = [parts.join('/')];
+  const out = [];
+  for (const part of parts) {
+    const whole = part.split('/').map(x => x.trim()).filter(Boolean);
+    if (whole.length > 1 && whole.every(w => words(w).length >= 2)) { out.push(...whole); continue; }
+    let combos = [[]];
+    for (const tk of words(part)) {
+      const opts = tk.split('/').filter(Boolean);
+      const next = [];
+      for (const c of combos) for (const o of (opts.length ? opts : [tk])) next.push(c.concat(o));
+      combos = next.slice(0, 16);
+    }
+    out.push(...combos.map(c => c.join(' ')));
+  }
+  return [...new Set(out.filter(Boolean))];
+}
+const infoCache = new Map();
+function termInfo(t) {
+  let r = infoCache.get(t);
+  if (!r) {
+    const base = stripPlus(t) || t;
+    const vars = expandSlash(base);
+    r = { main: vars[0] || base, vars: vars.length ? vars : [base], full: t.replace(/\+/g, ' ').replace(/\s+/g, ' ').trim() };
+    infoCache.set(t, r);
+  }
+  return r;
+}
+const perms = a => a.length <= 1 ? [a] : a.flatMap((x, i) => perms(a.slice(0, i).concat(a.slice(i + 1))).map(p => [x].concat(p)));
+// accept "sister and brother" for "brother and sister" (also or, &)
+function conjSwaps(s) {
+  const out = [s];
+  const parts = s.split(/\s+(?:and|or|&)\s+/i);
+  if (parts.length > 1 && parts.length <= 3) {
+    const joins = s.match(/\s+(?:and|or|&)\s+/gi);
+    for (const p of perms(parts)) out.push(p.map((x, i) => i ? joins[i - 1] + x : x).join(''));
+  }
+  const w = words(s);
+  for (let i = 1; i < w.length - 1; i++) if (/^(and|or|&)$/i.test(w[i])) { const c = w.slice(); [c[i - 1], c[i + 1]] = [c[i + 1], c[i - 1]]; out.push(c.join(' ')); }
+  return out;
+}
+function answerKeys(forms) {
+  const keys = new Set();
+  for (const f of forms) for (const a of conjSwaps(f)) { const n = normText(a); if (n) { keys.add(n); keys.add(n.replace(/ /g, '')); } }
+  return keys;
+}
+// typed answer: spacing is ignored, any one of the / alternatives (or several, in any order) counts
+function judgeTyped(input, t) {
+  const info = termInfo(t);
+  const keys = answerKeys(info.vars.concat(info.full));
+  const g = normText(input), gs = g.replace(/ /g, '');
+  if (!g) return { ok: false };
+  if (keys.has(g) || keys.has(gs)) return { ok: true };
+  if (info.vars.length > 1) {
+    const vk = answerKeys(info.vars);
+    let chunks = input.split(/\s*(?:\/|,|;|\+|&|\bor\b|\band\b)\s*/i).map(normText).filter(Boolean);
+    if (chunks.length === 1 && info.vars.every(v => words(v).length === 1)) chunks = words(g);
+    if (chunks.length > 1 && chunks.every(c => vk.has(c) || vk.has(c.replace(/ /g, '')))) return { ok: true };
+  }
+  for (const k of keys) if (!k.includes(' ') && k.length >= 4 && lev(gs, k) === 1) return { ok: true, note: '오타가 하나 있어요' };
+  return { ok: false };
+}
+
+function kindOf(t) { const n = words(termInfo(t).main).length; return (n >= 4 || (n >= 3 && /[.?!]$/.test(t))) ? 's' : 'w'; }
 function makeItems(pairs) {
   const seen = new Set(), items = [];
   for (const p of pairs) {
@@ -644,7 +720,7 @@ function deckView() {
   const s = deckStats(d), n = s.n || 1;
   const withM = d.items.filter(i => i.m);
   const wordsM = withM.filter(i => i.k === 'w');
-  const sentences = d.items.filter(i => i.k === 's' && words(i.t).length >= 2);
+  const sentences = d.items.filter(i => i.k === 's' && words(termInfo(i.t).main).length >= 2);
   const modes = [
     { id: 'match', name: '짝 맞추기', sub: '영어와 뜻을 탭해서 연결', icon: I.match, ok: withM.length >= 3 },
     { id: 'mc', name: '뜻 고르기', sub: '4개 중 정답 고르기', icon: I.choice, ok: withM.length >= 3 },
@@ -700,9 +776,9 @@ function kindsFor(it) {
   if (it.k === 'w') {
     if (!it.m) return ks;
     ks.push('mc-en', 'mc-ko', 'type');
-    if (spellable(it.t)) ks.push('spell');
+    if (spellable(termInfo(it.t).main)) ks.push('spell');
   } else {
-    if (words(it.t).length < 2) return it.m ? ['mc-en'] : ks;
+    if (words(termInfo(it.t).main).length < 2) return it.m ? ['mc-en'] : ks;
     if (it.m) { ks.push('build-en', 'mc-en'); if (words(it.m).length >= 2) ks.push('build-ko'); }
     else ks.push('order');
     if (TTS) ks.push('listen');
@@ -723,7 +799,7 @@ function bankFor(text, pool, field, it) {
   const have = new Set(tiles.map(normTok));
   const extra = [];
   if (tiles.length <= 10) {
-    const cand = shuffle(pool.filter(p => p.id !== it.id && p[field]).flatMap(p => tilesFrom(p[field])));
+    const cand = shuffle(pool.filter(p => p.id !== it.id && p[field]).flatMap(p => tilesFrom(field === 't' ? termInfo(p.t).main : p[field])));
     for (const c of cand) { if (extra.length >= (tiles.length < 5 ? 2 : 3)) break; const k = normTok(c); if (!have.has(k)) { have.add(k); extra.push(c); } }
   }
   return { answer: tiles, bank: shuffle(tiles.concat(extra)).map((t, i) => ({ i, t })) };
@@ -738,9 +814,9 @@ function makeQ(kind, it, pool) {
   const q = { kind, item: it, built: [], sel: null, typed: '' };
   if (kind === 'mc-en') q.opts = optionsFor(it, pool, 'm');
   else if (kind === 'mc-ko') q.opts = optionsFor(it, pool, 't');
-  else if (kind === 'build-en' || kind === 'listen' || kind === 'order') Object.assign(q, bankFor(it.t, pool, 't', it));
+  else if (kind === 'build-en' || kind === 'listen' || kind === 'order') Object.assign(q, bankFor(termInfo(it.t).main, pool, 't', it));
   else if (kind === 'build-ko') Object.assign(q, bankFor(it.m, pool, 'm', it));
-  else if (kind === 'spell') { q.answer = it.t.split(''); q.bank = letterBank(it.t); }
+  else if (kind === 'spell') { const w = termInfo(it.t).main; q.answer = w.split(''); q.bank = letterBank(w); }
   if ((kind === 'mc-en' || kind === 'mc-ko') && q.opts.length < 2) return makeQ(it.k === 'w' ? 'type' : 'build-en', it, pool);
   return q;
 }
@@ -866,15 +942,13 @@ function check() {
   const q = curQ(); if (!q || L.answered || !canCheck(q)) return;
   if (q.kind === 'mc-en' || q.kind === 'mc-ko') return submit(q.opts[q.sel] === answerText(q));
   if (q.kind === 'type') {
-    const got = normText(q.typed), want = normText(q.item.t);
-    if (got === want) return submit(true);
-    if (want.length >= 4 && lev(got, want) === 1) return submit(true, '오타가 하나 있어요');
-    return submit(false);
+    const v = judgeTyped(q.typed, q.item.t);
+    return submit(v.ok, v.note);
   }
-  if (q.kind === 'spell') return submit(q.built.map(i => q.bank[i].t).join('').toLowerCase() === q.item.t.toLowerCase());
+  if (q.kind === 'spell') return submit(q.built.map(i => q.bank[i].t).join('').toLowerCase() === q.answer.join('').toLowerCase());
   const got = q.built.map(i => normTok(q.bank[i].t)).join(' ');
-  const want = q.answer.map(normTok).join(' ');
-  submit(got === want);
+  const forms = q.kind === 'build-ko' ? [q.item.m] : [q.answer.join(' ')].concat(termInfo(q.item.t).vars);
+  submit(answerKeys(forms).has(got));
 }
 function giveUp() { const q = curQ(); if (q && !L.answered) submit(false); }
 
@@ -980,7 +1054,7 @@ function questionBody(q) {
     case 'type':
       return `<div class="prompt"><span class="big ko${bigCls(it.m)}">${esc(it.m)}</span></div>
         <textarea id="type-in" class="type-box" rows="2" placeholder="영어로 입력" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done" ${lock}>${esc(q.typed)}</textarea>
-        <span class="hint">${esc(it.t[0])}로 시작 · ${it.t.replace(/\s/g, '').length}글자${words(it.t).length > 1 ? ` · ${words(it.t).length}단어` : ''}</span>`;
+        <span class="hint">${typeHint(it.t)}</span>`;
     case 'match': {
       const fl = q.flash || {};
       const cell = (side, id) => {
@@ -996,6 +1070,11 @@ function questionBody(q) {
     }
   }
   return '';
+}
+function typeHint(t) {
+  const { main, vars } = termInfo(t);
+  if (vars.length > 1) return `정답이 ${vars.length}개예요 · 하나만 써도 돼요 (${esc(main[0])}로 시작하는 것 포함)`;
+  return `${esc(main[0])}로 시작 · ${main.replace(/\s/g, '').length}글자${words(main).length > 1 ? ` · ${words(main).length}단어` : ''}`;
 }
 const PRAISE = ['정답이에요!', '좋아요!', '훌륭해요!', '완벽해요!', '잘했어요!'];
 function footView(q) {
@@ -1138,6 +1217,8 @@ function modalView() {
     <ul class="guide-list">
       <li>A열에 영어, B열에 뜻을 적어요. 첫 줄 제목(영어/뜻, word/meaning)은 있어도 없어도 돼요.</li>
       <li>번호 열이 있으면 알아서 건너뛰어요. 뜻이 왼쪽에 있어도 한글을 보고 자리를 찾아요.</li>
+      <li><code>look/watch</code>처럼 /로 나눈 답은 하나만 써도 정답, <code>take care of + 명사</code>의 + 뒤 문법 표시는 답에서 빼고 채점해요.</li>
+      <li>띄어쓰기는 달라도 되고, <code>brother and sister</code>처럼 and로 이어진 말은 순서를 바꿔도 정답이에요.</li>
       <li>네 단어 이상이거나 마침표로 끝나면 <b>문장</b>으로 보고 문장 만들기 문제를 내요.</li>
       <li><code>예문</code>, <code>예문해석</code> 열을 추가하면 예문도 문장 문제로 들어가요.</li>
       <li>시트를 여러 개 쓰면 Day별로 단어장을 나눌 수 있어요.</li>
