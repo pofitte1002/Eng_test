@@ -151,6 +151,16 @@ svg.i .f { fill: currentColor; stroke: none; }
 .mode b { font-size: 16px; font-weight: 800; }
 .mode small { font-size: 13px; color: var(--muted); line-height: 1.35; }
 .mode:disabled { opacity: .5; }
+.mode:last-child:nth-child(odd) { grid-column: span 2; }
+.expand { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: var(--r); background: var(--accent-soft); border: 2px solid var(--line); }
+.expand .txt { display: flex; flex-direction: column; gap: 2px; }
+.expand .txt b { font-size: 16px; font-weight: 800; }
+.expand .txt small { font-size: 13px; color: var(--muted); line-height: 1.45; }
+.expand .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.expand .row .btn { width: auto; flex: 1 1 auto; }
+.gen-tag { display: inline-block; font-size: 12px; font-weight: 800; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
+.bubble.src span { display: flex; flex-direction: column; gap: 2px; }
+.bubble.src small { font-size: 14px; font-weight: 500; color: var(--muted); }
 .settings { display: flex; flex-direction: column; gap: 2px; background: var(--surface); border: 2px solid var(--line); border-radius: var(--r); padding: 4px 14px; }
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; }
 .set-row + .set-row { border-top: 1.5px solid var(--line); }
@@ -377,6 +387,7 @@ const I = {
   play: svg('<path class="f" d="M7 4.5v15l12.5-7.5z"/>'),
   file: svg('<path d="M6 3h8l5 5v13H6zM14 3v5h5M9 13h7M9 17h7"/>'),
   help: svg('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1.2-1.5 2.3M12 17h.01"/>'),
+  grow: svg('<path d="M4 7h10M4 12h7M4 17h12M17 4v6M14 7h6"/>'),
   clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
 };
 
@@ -612,6 +623,182 @@ function sheetsOf(wb, base) {
   })).filter(s => s.pairs.length);
 }
 
+/* ---------- sentence expansion: rule-based drills built from the user's own sentences ---------- */
+const IRREGULAR = 'be was been|go went gone|come came come|get got gotten|make made made|take took taken|see saw seen|know knew known|think thought thought|say said said|tell told told|give gave given|find found found|feel felt felt|leave left left|keep kept kept|bring brought brought|buy bought bought|begin began begun|run ran run|write wrote written|read read read|sit sat sat|stand stood stood|lose lost lost|pay paid paid|meet met met|eat ate eaten|drink drank drunk|speak spoke spoken|break broke broken|choose chose chosen|drive drove driven|fall fell fallen|fly flew flown|forget forgot forgotten|grow grew grown|hear heard heard|hold held held|lend lent lent|let let let|put put put|cut cut cut|hit hit hit|set set set|sleep slept slept|spend spent spent|send sent sent|build built built|teach taught taught|catch caught caught|fight fought fought|win won won|swim swam swum|sing sang sung|ride rode ridden|wear wore worn|understand understood understood|become became become|wake woke woken|sell sold sold|show showed shown|throw threw thrown|draw drew drawn|hide hid hidden|mean meant meant|lead led led|feed fed fed|steal stole stolen|shake shook shaken|rise rose risen|blow blew blown|hang hung hung|shut shut shut|cost cost cost|hurt hurt hurt|quit quit quit|beat beat beaten|have had had|do did done|learn learned learned|bite bit bitten|forgive forgave forgiven|overcome overcame overcome';
+const REGULAR = 'borrow abandon improve decline play study work walk talk like love live want need help call ask answer start finish open close watch look listen clean cook wash visit travel enjoy stay try cry carry worry hurry marry stop plan drop shop hope use move change decide arrive believe care dance hate invite smile agree practice prepare remember return explain happen wait check miss pass push pull fix mix touch reach wish kiss guess order offer enter allow follow accept add appear attend avoid complete continue create depend describe develop die discuss expect fail fill include increase join jump laugh mind notice own paint pick plant prefer print protect rain receive refuse relax rest save seem share smell solve suggest support surprise thank train turn wonder cross admit regret chat hug jog grab rob step skip clap chop control respect exercise graduate recommend achieve complain apologize realize recognize introduce imagine compare reduce produce provide consider repeat request remain obey trust shout';
+const DOUBLE = new Set('stop plan drop shop step slip tap clap chop hug beg rub nod jog chat grab rob admit regret prefer refer occur permit control ship skip trip hop pat wrap'.split(' '));
+const regPast = b => DOUBLE.has(b) ? b + b.slice(-1) + 'ed' : /e$/.test(b) ? b + 'd' : /[^aeiou]y$/.test(b) ? b.slice(0, -1) + 'ied' : b + 'ed';
+const third = b => ({ have: 'has', do: 'does', go: 'goes', be: 'is' })[b] || (/(s|x|z|ch|sh|o)$/.test(b) ? b + 'es' : /[^aeiou]y$/.test(b) ? b.slice(0, -1) + 'ies' : b + 's');
+const VB = {}, VFORM = new Map();
+IRREGULAR.split('|').map(x => x.split(' ')).concat(REGULAR.split(' ').map(b => [b, regPast(b), regPast(b)])).forEach(([b, past, pp]) => {
+  if (VB[b]) return;
+  VB[b] = { past, pp, s3: third(b) };
+  for (const [f, form] of [['base', b], ['past', past], ['3s', third(b)], ['pp', pp]]) if (!VFORM.has(form)) VFORM.set(form, { base: b, f });
+});
+const SUBJ_P = { i: '1s', you: 'pl', we: 'pl', they: 'pl', he: '3s', she: '3s', it: '3s', this: '3s', that: '3s', there: '3s' };
+const DETS = new Set('the a an my your his her our their this that these those its every each some many all no one'.split(' '));
+const MODALS = new Set('can could will would should must may might shall'.split(' '));
+const BE = { am: 'pres', is: 'pres', are: 'pres', was: 'past', were: 'past' };
+const NEG_OF = { is: "isn't", are: "aren't", was: "wasn't", were: "weren't", am: 'am not', can: "can't", could: "couldn't", will: "won't", would: "wouldn't", should: "shouldn't", must: "mustn't", may: 'may not', might: 'might not', shall: "shan't", have: "haven't", has: "hasn't", had: "hadn't" };
+const ADVS = new Set('always usually often sometimes never really just also still already even only rarely seldom finally actually'.split(' '));
+const TIME_HARD = /\b(yesterday|tomorrow|today|tonight|ago|last|next|now|every|these days|soon|then)\b/i;
+const TIME_ANY = /\b(yesterday|tomorrow|today|tonight|ago|last|next|now|every|these days|soon|then|always|usually|often|sometimes|never|ever|when|before|after|until|since|again|weekend|morning|evening|night)\b/i;
+const CONTR = { "i'm": ['I', 'am'], "you're": ['you', 'are'], "we're": ['we', 'are'], "they're": ['they', 'are'], "he's": ['he', 'is'], "she's": ['she', 'is'], "it's": ['it', 'is'], "that's": ['that', 'is'], "there's": ['there', 'is'], "i've": ['I', 'have'], "you've": ['you', 'have'], "we've": ['we', 'have'], "they've": ['they', 'have'], "i'll": ['I', 'will'], "you'll": ['you', 'will'], "he'll": ['he', 'will'], "she'll": ['she', 'will'], "we'll": ['we', 'will'], "they'll": ['they', 'will'], "it'll": ['it', 'will'] };
+const SWAP = { i: 'she', she: 'I', he: 'they', they: 'he', we: 'she', you: 'he' };
+const OBJ = { i: { my: 'her', me: 'her', mine: 'hers', myself: 'herself' }, she: { herself: 'myself', hers: 'mine' }, he: { his: 'their', him: 'them', himself: 'themselves' }, they: { their: 'his', them: 'him', theirs: 'his', themselves: 'himself' }, we: { our: 'her', us: 'her', ours: 'hers', ourselves: 'herself' }, you: { your: 'his', yourself: 'himself', yours: 'his' } };
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+const beFor = (p, past) => past ? (p === 'pl' ? 'were' : 'was') : (p === '1s' ? 'am' : p === '3s' ? 'is' : 'are');
+const doFor = (p, past) => past ? 'did' : (p === '3s' ? 'does' : 'do');
+
+function analyze(text) {
+  const raw = text.trim();
+  const end = (raw.match(/[.!?]+$/) || [''])[0];
+  if (/[?!]/.test(end) || /[;:"“”()\/+]/.test(raw)) return null;
+  const w = words(raw.slice(0, raw.length - end.length)).flatMap(x => CONTR[x.toLowerCase().replace(/’/g, "'")] || [x]);
+  if (w.length < 2) return null;
+  const lw = w.map(x => x.toLowerCase());
+  const negative = lw.some(x => /n't$/.test(x) || x === 'not' || x === 'never');
+  const isAux = x => x in BE || MODALS.has(x) || x === 'have' || x === 'has' || x === 'had' || /^(do|does|did)(n't)?$/.test(x) || /n't$/.test(x);
+  const finite = x => isAux(x) || (VFORM.has(x) && ['past', '3s'].includes(VFORM.get(x).f));
+  let subjEnd = -1, person = '3s', pron = null;
+  if (SUBJ_P[lw[0]] && (finite(lw[1]) || VFORM.has(lw[1]) || ADVS.has(lw[1]))) { subjEnd = 1; pron = lw[0]; person = SUBJ_P[lw[0]]; }
+  else if (VFORM.has(lw[0]) && VFORM.get(lw[0]).f === 'base' && !/^[A-Z]/.test(w[1] || '') && !finite(lw[1]) || isAux(lw[0])) return null;
+  else {
+    for (let j = 1; j < Math.min(w.length, 6); j++) {
+      if (lw[j] === 'and' || lw[j] === 'of' || lw[j] === 'in') { if (lw[j] === 'and') person = 'pl'; continue; }
+      const plural = /[^s]s$/.test(lw[j - 1]) && !['this', 'his', 'is', 'was', 'its', 'us'].includes(lw[j - 1]);
+      if (finite(lw[j]) || ADVS.has(lw[j]) && finite(lw[j + 1] || '') || (plural && VFORM.has(lw[j]) && VFORM.get(lw[j]).f === 'base')) {
+        subjEnd = j; if (person !== 'pl') person = plural ? 'pl' : '3s'; break;
+      }
+    }
+    if (subjEnd < 0) return null;
+  }
+  let vi = subjEnd;
+  const adv = ADVS.has(lw[vi]) && vi + 1 < w.length && !(lw[vi] in BE) ? vi : -1;
+  if (adv >= 0) vi++;
+  const v = lw[vi];
+  const a = { w, lw, subjEnd, vi, adv, person, pron, negative, type: 'unknown', past: false, base: null };
+  if (v in BE) { a.type = 'be'; a.past = BE[v] === 'past'; a.prog = /ing$/.test(lw[vi + 1] || '') || /ing$/.test(lw[vi + 2] || ''); }
+  else if (v === 'will') { a.type = 'will'; a.base = lw[vi + 1]; }
+  else if (MODALS.has(v)) a.type = 'modal';
+  else if ((v === 'have' || v === 'has' || v === 'had') && (lw[vi + 1] === 'been' || (VFORM.get(lw[vi + 1]) || {}).f === 'pp' || /ed$/.test(lw[vi + 1] || ''))) { a.type = 'perf'; a.past = v === 'had'; }
+  else if (/^(do|does|did)(n't)?$/.test(v)) { a.type = 'do'; a.past = v.startsWith('did'); a.base = lw[vi + 1] === 'not' ? lw[vi + 2] : lw[vi + 1]; }
+  else if (VFORM.has(v)) {
+    const { base, f } = VFORM.get(v);
+    if (f === 'pp' && VB[base].past !== v) return a;
+    a.type = 'main'; a.base = base;
+    a.past = f === 'past' || (f === 'base' && person === '3s' && VB[base].past === v);
+    if (!a.past && ((person === '3s') !== (f === '3s'))) a.type = 'unknown';
+  }
+  return a;
+}
+function subjTokens(a) {
+  const s = a.w.slice(0, a.subjEnd);
+  const k = a.lw[0];
+  if (k !== 'i' && (SUBJ_P[k] || DETS.has(k) || VFORM.has(k) || !/^[A-Z][a-z]+$/.test(s[0]) || /(tion|ment|ness|ity|ing|ance|ence)$/.test(k))) s[0] = s[0].toLowerCase();
+  return s;
+}
+const finish = (toks, end) => cap(toks.join(' ').replace(/\s+,/g, ',')) + end;
+const someAny = toks => toks.map(t => t.toLowerCase() === 'some' ? 'any' : t);
+const verbPast = b => b === 'be' ? null : (VB[b] || {}).past;
+
+function makeNeg(a) {
+  if (a.negative || a.type === 'unknown' || a.type === 'do') return null;
+  const { w, vi } = a, subj = w.slice(0, a.subjEnd), advT = a.adv >= 0 ? [w[a.adv]] : [], rest = someAny(w.slice(vi + 1));
+  if (a.type === 'main') return finish([...subj, doFor(a.person, a.past) + "n't", ...advT, a.base, ...rest], '.');
+  return finish([...subj, ...advT, NEG_OF[a.lw[vi]] || a.lw[vi] + ' not', ...rest], '.');
+}
+function makeQ2(a) {
+  if (a.negative || a.type === 'unknown' || a.type === 'do') return null;
+  const { w, vi } = a, subj = subjTokens(a), advT = a.adv >= 0 ? [w[a.adv].toLowerCase()] : [], rest = someAny(w.slice(vi + 1));
+  if (a.type === 'main') return finish([cap(doFor(a.person, a.past)), ...subj, ...advT, a.base, ...rest], '?');
+  return finish([cap(a.lw[vi]), ...subj, ...advT, ...rest], '?');
+}
+function makeTense(a) {
+  if (a.negative || TIME_HARD.test(a.w.join(' '))) return null;
+  const { w, vi } = a, head = w.slice(0, vi), rest = w.slice(vi + 1);
+  if (a.type === 'be') return a.past ? { t: finish([...head, 'will', 'be', ...rest], '.'), tag: '미래형', label: '미래형(will)으로 바꿔 보세요' }
+    : { t: finish([...head, beFor(a.person, true), ...rest], '.'), tag: '과거형', label: '과거형으로 바꿔 보세요' };
+  if (a.type === 'main') return a.past ? { t: finish([...head, 'will', a.base, ...rest], '.'), tag: '미래형', label: '미래형(will)으로 바꿔 보세요' }
+    : { t: finish([...head, verbPast(a.base), ...rest], '.'), tag: '과거형', label: '과거형으로 바꿔 보세요' };
+  if (a.type === 'will' && rest.length) {
+    const b = rest[0].toLowerCase(), p = b === 'be' ? beFor(a.person, true) : verbPast(b);
+    if (p) return { t: finish([...head, p, ...rest.slice(1)], '.'), tag: '과거형', label: '과거형으로 바꿔 보세요' };
+  }
+  return null;
+}
+function makeSubj(a) {
+  if (!a.pron || !SWAP[a.pron] || a.type === 'unknown') return null;
+  const ns = SWAP[a.pron], np = SUBJ_P[ns.toLowerCase()];
+  const out = a.w.slice();
+  out[0] = ns;
+  const v = a.lw[a.vi];
+  if (a.type === 'be') out[a.vi] = beFor(np, a.past);
+  else if (a.type === 'perf') out[a.vi] = a.past ? 'had' : (np === '3s' ? 'has' : 'have');
+  else if (a.type === 'do') out[a.vi] = v.replace(/^(do|does|did)/, doFor(np, a.past));
+  else if (a.type === 'main' && !a.past) out[a.vi] = np === '3s' ? VB[a.base].s3 : a.base;
+  const map = OBJ[a.pron] || {};
+  for (let i = a.vi + 1; i < out.length; i++) { const k = out[i].toLowerCase(); if (map[k]) out[i] = map[k]; }
+  return { t: finish(out, '.'), tag: '주어 바꾸기', label: `주어를 ‘${ns}’(으)로 바꿔 보세요` };
+}
+function shortAux(a, p) {
+  if (a.type === 'be') return beFor(p, a.past);
+  if (a.type === 'perf') return a.past ? 'had' : (p === '3s' ? 'has' : 'have');
+  if (a.type === 'main') return doFor(p, a.past);
+  if (a.type === 'will' || a.type === 'modal') return a.lw[a.vi];
+  return null;
+}
+const PEOPLE = /^(mother|mom|father|dad|parents?|brother|sister|friends?|teachers?|students?|people|children|child|kids?|boys?|girls?|man|men|woman|women|baby|uncle|aunt|grandmother|grandfather|grandma|grandpa|family|classmates?|neighbors?|doctor|everyone|somebody|someone|son|daughter|cousin|wife|husband)$/;
+const STATIVE = new Set('love like hate know want need believe mean seem own understand remember prefer make agree depend'.split(' '));
+function isPerson(a) {
+  if (a.pron) return ['i', 'you', 'he', 'she', 'we', 'they'].includes(a.pron);
+  const subj = a.lw.slice(0, a.subjEnd);
+  if (subj.some(x => PEOPLE.test(x))) return true;
+  return a.subjEnd === 1 && /^[A-Z][a-z]+$/.test(a.w[0]) && !VFORM.has(subj[0]) && !DETS.has(subj[0]) && !/(tion|ment|ness|ity|ing|ance|ence)$/.test(subj[0]);
+}
+function makeLong(a, kind) {
+  const base = a.w.join(' ');
+  if (kind !== 'think' && !isPerson(a)) return null;
+  const other = a.pron === 'i' ? 'she' : 'I', op = SUBJ_P[other.toLowerCase()];
+  if (kind === 'too' && !a.negative) { const x = shortAux(a, op); if (x) return { t: finish([base + ',', 'and', other, x, 'too'], '.'), tag: '길게', label: '‘and … too’를 붙여 길게 만들어 보세요' }; }
+  if (kind === 'but' && !a.negative) { const x = shortAux(a, op); if (x) return { t: finish([base + ',', 'but', other, NEG_OF[x] || x + "n't"], '.'), tag: '길게', label: '‘but …’으로 반대 내용을 이어 보세요' }; }
+  if (kind === 'time' && !TIME_ANY.test(base)) {
+    const pool = a.type === 'will' ? ['tomorrow', 'next week'] : a.type === 'main' ? (a.past ? ['yesterday', 'last weekend', 'two days ago'] : STATIVE.has(a.base) ? null : ['every day', 'on weekends']) : a.type === 'be' ? (a.past ? ['yesterday', 'last year'] : a.prog ? ['right now'] : null) : null;
+    if (pool) { const ph = pick(pool); return { t: finish([base, ph], '.'), tag: '길게', label: `‘${ph}’를 넣어 길게 만들어 보세요` }; }
+  }
+  if (kind === 'think' && a.pron !== 'i' && a.type !== 'unknown') return { t: finish(['I', 'think', 'that', ...subjTokens(a), ...a.w.slice(a.subjEnd)], '.'), tag: '길게', label: '‘I think that …’으로 시작해 보세요' };
+  return null;
+}
+function expandSentence(text) {
+  const a = analyze(text); if (!a) return [];
+  const mk = (f, tag, label) => { const t = f(a); return t ? { t, tag, label } : null; };
+  const change = shuffle([
+    () => mk(makeNeg, '부정문', '부정문으로 바꿔 보세요'),
+    () => mk(makeQ2, '의문문', '의문문으로 바꿔 보세요'),
+    () => makeTense(a),
+    () => makeSubj(a),
+  ]).map(f => f()).filter(Boolean);
+  const long = shuffle(['too', 'but', 'time', 'think']).map(k => makeLong(a, k)).filter(Boolean);
+  const out = change.slice(0, 2).concat(long.slice(0, 1));
+  return out.filter((v, i) => v.t.toLowerCase() !== text.trim().toLowerCase() && out.findIndex(x => x.t === v.t) === i);
+}
+function expandDeck(d) {
+  d.items = d.items.filter(i => !i.gen);
+  const have = new Set(d.items.map(i => i.t.toLowerCase()));
+  let made = 0, from = 0;
+  for (const it of d.items.slice()) {
+    if (it.k !== 's') continue;
+    const vs = expandSentence(it.t).filter(v => !have.has(v.t.toLowerCase()));
+    if (vs.length) from++;
+    for (const v of vs) {
+      have.add(v.t.toLowerCase());
+      d.items.push({ id: uid(), t: v.t, m: '', k: 's', c: 0, w: 0, last: 0, gen: { tag: v.tag, label: v.label, from: it.t, fromM: it.m } });
+      made++;
+    }
+  }
+  return { made, from };
+}
+
 /* ---------- data ---------- */
 const SAMPLE = [
   ['abandon', '버리다, 포기하다'], ['accurate', '정확한'], ['borrow', '빌리다'], ['curious', '호기심 많은'],
@@ -637,8 +824,8 @@ if (!DB.seeded) { DB.decks.push(makeDeck('예시 단어장', SAMPLE, true)); DB.
 const deckById = id => DB.decks.find(d => d.id === id);
 const level = it => (it.c >= 3 && it.c >= it.w * 2) ? 2 : (it.c + it.w > 0 ? 1 : 0);
 function deckStats(d) {
-  const s = { w: 0, s: 0, l0: 0, l1: 0, l2: 0, wrong: 0, n: d.items.length };
-  for (const it of d.items) { s[it.k]++; s['l' + level(it)]++; if (it.w > 0 && level(it) < 2) s.wrong++; }
+  const s = { w: 0, s: 0, g: 0, l0: 0, l1: 0, l2: 0, wrong: 0, n: d.items.length };
+  for (const it of d.items) { it.gen ? s.g++ : s[it.k]++; s['l' + level(it)]++; if (it.w > 0 && level(it) < 2) s.wrong++; }
   return s;
 }
 function streakNow() {
@@ -709,24 +896,27 @@ function deckCard(d) {
   const s = deckStats(d), n = s.n || 1;
   return `<button class="deck-card" data-act="open-deck" data-id="${d.id}">
     <div class="top"><span class="name">${esc(d.name)}</span>${d.sample ? '<span class="tag">예시</span>' : ''}</div>
-    <div class="meta"><span>단어 ${s.w}</span><span>문장 ${s.s}</span><span>암기 ${Math.round(s.l2 / n * 100)}%</span></div>
+    <div class="meta"><span>단어 ${s.w}</span><span>문장 ${s.s}</span>${s.g ? `<span>확장 ${s.g}</span>` : ''}<span>암기 ${Math.round(s.l2 / n * 100)}%</span></div>
     <div class="meter" aria-hidden="true"><i class="m1" style="width:${s.l2 / n * 100}%"></i><i class="m2" style="width:${s.l1 / n * 100}%"></i></div>
   </button>`;
 }
 
 /* ---------- views: deck ---------- */
+const rowView = it => `<div class="word-row"><span class="dot lv${level(it)}"></span><span class="t">${esc(it.t)}</span><span class="m">${it.gen ? `<span class="gen-tag">${esc(it.gen.tag)}</span>` : (esc(it.m) || '—')}</span></div>`;
 function deckView() {
   const d = deckById(UI.deckId); if (!d) { UI.screen = 'home'; return homeView(); }
   const s = deckStats(d), n = s.n || 1;
   const withM = d.items.filter(i => i.m);
   const wordsM = withM.filter(i => i.k === 'w');
   const sentences = d.items.filter(i => i.k === 's' && words(termInfo(i.t).main).length >= 2);
+  const own = sentences.filter(i => !i.gen);
   const modes = [
     { id: 'match', name: '짝 맞추기', sub: '영어와 뜻을 탭해서 연결', icon: I.match, ok: withM.length >= 3 },
     { id: 'mc', name: '뜻 고르기', sub: '4개 중 정답 고르기', icon: I.choice, ok: withM.length >= 3 },
     { id: 'build', name: '문장 만들기', sub: sentences.length ? '단어를 순서대로 탭' : '문장이 없어요', icon: I.puzzle, ok: sentences.length > 0 },
     { id: 'spell', name: '철자 쓰기', sub: wordsM.length ? '알파벳 조합 · 직접 입력' : '단어가 없어요', icon: I.pencil, ok: wordsM.length > 0 },
     { id: 'flash', name: '플래시카드', sub: '뒤집어 보며 외우기', icon: I.cards, ok: d.items.length > 0 },
+    { id: 'transform', name: '문장 변형', sub: s.g ? `확장 문장 ${s.g}개로 연습` : '아래에서 먼저 늘려 주세요', icon: I.grow, ok: s.g > 0 },
     { id: 'review', name: '오답 복습', sub: s.wrong ? `아직 헷갈리는 ${s.wrong}개` : '틀린 항목이 없어요', icon: I.redo, ok: s.wrong > 0 },
   ];
   const list = UI.showAll ? d.items : d.items.slice(0, 8);
@@ -741,6 +931,7 @@ function deckView() {
         <div class="counts">
           <span class="stat-pill">단어 <b>${s.w}</b></span>
           <span class="stat-pill">문장 <b>${s.s}</b></span>
+          ${s.g ? `<span class="stat-pill">확장 <b>${s.g}</b></span>` : ''}
           <span class="stat-pill">암기 <b>${Math.round(s.l2 / n * 100)}%</b></span>
         </div>
         <div class="meter"><i class="m1" style="width:${s.l2 / n * 100}%"></i><i class="m2" style="width:${s.l1 / n * 100}%"></i></div>
@@ -750,6 +941,13 @@ function deckView() {
       <div class="modes">
         ${modes.map(m => `<button class="mode" data-act="start" data-mode="${m.id}" ${m.ok ? '' : 'disabled'}>
           <span class="ic">${m.icon}</span><b>${m.name}</b><small>${m.sub}</small></button>`).join('')}
+      </div>
+      <div class="expand">
+        <div class="txt"><b>문장 늘리기</b><small>${own.length ? `내 문장 ${own.length}개를 부정문·의문문·시제·주어 바꾸기와 더 긴 문장으로 바꿔 문제를 더 만들어요.` : '엑셀에 문장이 있어야 늘릴 수 있어요.'}</small></div>
+        <div class="row">
+          <button class="btn sm" data-act="expand" ${own.length ? '' : 'disabled'}>${I.grow}${s.g ? '다시 만들기' : '늘리기'}</button>
+          ${s.g ? `<button class="btn ghost sm" data-act="unexpand">확장 지우기</button>` : ''}
+        </div>
       </div>
       <div class="settings">
         <div class="set-row"><span>문제 수</span>
@@ -761,7 +959,7 @@ function deckView() {
       </div>
       <h2 class="sec-title"><span>항목</span><span>${d.items.length}개</span></h2>
       <div class="word-list">
-        ${list.map(it => `<div class="word-row"><span class="dot lv${level(it)}"></span><span class="t">${esc(it.t)}</span><span class="m">${esc(it.m) || '—'}</span></div>`).join('')}
+        ${list.map(rowView).join('')}
         ${d.items.length > 8 ? `<button class="more" data-act="show-all">${UI.showAll ? '접기' : `${d.items.length - 8}개 더 보기`}</button>` : ''}
       </div>
       <button class="btn danger sm" data-act="ask-delete">${I.trash}단어장 삭제</button>
@@ -777,6 +975,9 @@ function kindsFor(it) {
     if (!it.m) return ks;
     ks.push('mc-en', 'mc-ko', 'type');
     if (spellable(termInfo(it.t).main)) ks.push('spell');
+  } else if (it.gen) {
+    ks.push('transform', 'transform');
+    if (TTS) ks.push('listen');
   } else {
     if (words(termInfo(it.t).main).length < 2) return it.m ? ['mc-en'] : ks;
     if (it.m) { ks.push('build-en', 'mc-en'); if (words(it.m).length >= 2) ks.push('build-ko'); }
@@ -794,12 +995,12 @@ function optionsFor(it, pool, field) {
   return shuffle(opts);
 }
 function tilesFrom(text) { return words(text).map(cleanTok).filter(Boolean); }
-function bankFor(text, pool, field, it) {
+function bankFor(text, pool, field, it, prefer) {
   const tiles = tilesFrom(text);
   const have = new Set(tiles.map(normTok));
   const extra = [];
-  if (tiles.length <= 10) {
-    const cand = shuffle(pool.filter(p => p.id !== it.id && p[field]).flatMap(p => tilesFrom(field === 't' ? termInfo(p.t).main : p[field])));
+  if (tiles.length <= 12) {
+    const cand = shuffle(prefer ? tilesFrom(prefer) : []).concat(shuffle(pool.filter(p => p.id !== it.id && p[field]).flatMap(p => tilesFrom(field === 't' ? termInfo(p.t).main : p[field]))));
     for (const c of cand) { if (extra.length >= (tiles.length < 5 ? 2 : 3)) break; const k = normTok(c); if (!have.has(k)) { have.add(k); extra.push(c); } }
   }
   return { answer: tiles, bank: shuffle(tiles.concat(extra)).map((t, i) => ({ i, t })) };
@@ -816,6 +1017,7 @@ function makeQ(kind, it, pool) {
   else if (kind === 'mc-ko') q.opts = optionsFor(it, pool, 't');
   else if (kind === 'build-en' || kind === 'listen' || kind === 'order') Object.assign(q, bankFor(termInfo(it.t).main, pool, 't', it));
   else if (kind === 'build-ko') Object.assign(q, bankFor(it.m, pool, 'm', it));
+  else if (kind === 'transform') Object.assign(q, bankFor(it.t, pool, 't', it, it.gen.from));
   else if (kind === 'spell') { const w = termInfo(it.t).main; q.answer = w.split(''); q.bank = letterBank(w); }
   if ((kind === 'mc-en' || kind === 'mc-ko') && q.opts.length < 2) return makeQ(it.k === 'w' ? 'type' : 'build-en', it, pool);
   return q;
@@ -850,6 +1052,7 @@ function buildQueue(mode, d, forced) {
   }
   let items, kinds;
   if (mode === 'mc') { items = choose(pool.filter(i => i.m), n); kinds = it => ['mc-en', 'mc-ko'].filter(k => it.k === 'w' || k === 'mc-en'); }
+  else if (mode === 'transform') { items = choose(pool.filter(i => i.gen), n); kinds = () => ['transform']; }
   else if (mode === 'build') { items = choose(pool.filter(i => i.k === 's' && words(i.t).length >= 2), n); kinds = it => kindsFor(it).filter(k => k !== 'mc-en'); }
   else if (mode === 'spell') { items = choose(wordsM, n); kinds = it => kindsFor(it).filter(k => k === 'spell' || k === 'type'); }
   else if (mode === 'review') { items = choose(pool.filter(i => i.w > 0 && level(i) < 2), n); kinds = it => kindsFor(it).filter(k => k !== 'mc-en' || it.k === 's'); }
@@ -905,7 +1108,7 @@ function submit(ok, note) {
   if (q.item) record(q.item, ok);
   save();
   renderLesson();
-  if (DB.settings.autoplay && q.item && ['mc-ko', 'type', 'spell', 'build-en', 'order'].includes(q.kind)) speak(q.item.t);
+  if (DB.settings.autoplay && q.item && ['mc-ko', 'type', 'spell', 'build-en', 'order', 'transform'].includes(q.kind)) speak(q.item.t);
 }
 function nextQ() {
   if (!L) return;
@@ -992,6 +1195,7 @@ const LABEL = {
   'spell': () => '철자를 맞춰 보세요',
   'type': () => '영어로 써 보세요',
   'match': () => '짝을 맞춰 보세요',
+  'transform': it => esc(it.gen.label),
 };
 const bigCls = s => (String(s).length > 28 ? ' long' : '');
 function lessonView() {
@@ -1031,9 +1235,11 @@ function questionBody(q) {
     case 'build-en':
     case 'build-ko':
     case 'listen':
-    case 'order': {
+    case 'order':
+    case 'transform': {
       let prompt = '';
       if (q.kind === 'build-en') prompt = `<div class="bubble"><span>${esc(it.m)}</span></div>`;
+      else if (q.kind === 'transform') prompt = `<div class="prompt">${spk(it.gen.from)}<div class="bubble src"><span>${esc(it.gen.from)}${it.gen.fromM ? `<small>${esc(it.gen.fromM)}</small>` : ''}</span></div></div>`;
       else if (q.kind === 'build-ko') prompt = `<div class="prompt">${spk(it.t)}<div class="bubble"><span>${esc(it.t)}</span></div></div>`;
       else if (q.kind === 'listen') prompt = `<div class="listen-row"><button class="speak" data-act="say" data-t="${esc(it.t)}" aria-label="듣기">${I.speaker}</button><button class="speak slow" data-act="say" data-slow="1" data-t="${esc(it.t)}" aria-label="천천히 듣기">${I.slow}</button></div>`;
       else prompt = it.m ? `<div class="bubble"><span>${esc(it.m)}</span></div>` : (TTS ? `<div class="prompt">${spk(it.t)}<span class="hint">힌트가 필요하면 눌러서 들어 보세요</span></div>` : '');
@@ -1094,7 +1300,7 @@ function footView(q) {
       <button class="btn good" data-act="next" id="next-btn">계속</button></div></footer>`;
   }
   const ans = answerText(q);
-  const other = ans === it.t ? it.m : it.t;
+  const other = ans === it.t ? (it.m || (it.gen ? '원래 문장: ' + it.gen.from : '')) : it.t;
   return `<footer class="foot bad"><div class="wrap" style="display:flex;flex-direction:column;gap:14px">
     <div class="fb"><span class="badge">${I.x}</span><div class="txt"><h3>정답</h3><p>${esc(ans)}${other ? `<small>${esc(other)}</small>` : ''}</p></div>${TTS ? `<button class="speak sm" data-act="say" data-t="${esc(it.t)}" aria-label="발음 듣기">${I.speaker}</button>` : ''}</div>
     <button class="btn bad" data-act="next" id="next-btn">계속</button></div></footer>`;
@@ -1123,7 +1329,7 @@ function flashView() {
         <div class="card${F.flipped ? ' flipped' : ''}" id="card" data-act="flip" role="button" tabindex="0" aria-label="카드 뒤집기">
           <div class="face front"><span class="swipe-tag a">다시</span><span class="swipe-tag k">알아요</span><small>${it.k === 's' ? '문장' : '단어'} · 탭해서 뒤집기</small><span class="w${bigCls(it.t)}">${esc(it.t)}</span>
             ${TTS ? `<button class="speak" data-act="say" data-t="${esc(it.t)}" aria-label="발음 듣기">${I.speaker}</button>` : ''}</div>
-          <div class="face back"><small>뜻</small><span class="w${bigCls(it.m)}">${esc(it.m) || '뜻이 비어 있어요'}</span><small style="text-transform:none">${esc(it.t)}</small></div>
+          <div class="face back"><small>${it.gen ? esc(it.gen.tag) + ' · 원래 문장' : '뜻'}</small><span class="w${bigCls(it.gen ? it.gen.from : it.m)}">${it.gen ? esc(it.gen.from) : (esc(it.m) || '뜻이 비어 있어요')}</span><small style="text-transform:none">${esc(it.t)}</small></div>
         </div>
       </div>
       <p class="hint" style="margin:0;text-align:center">왼쪽으로 밀면 다시, 오른쪽으로 밀면 알아요</p>
@@ -1168,7 +1374,7 @@ function resultView() {
         <div class="stat-tile a"><span>시간</span><b>${fmtTime(R.time)}</b></div>
       </div>
       ${R.missed.length ? `<h2 class="sec-title"><span>${R.mode === 'flash' ? '다시 본 항목' : '틀린 항목'}</span><span>${R.missed.length}개</span></h2>
-      <div class="word-list">${R.missed.map(it => `<div class="word-row"><span class="dot"></span><span class="t">${esc(it.t)}</span><span class="m">${esc(it.m) || '—'}</span></div>`).join('')}</div>` : ''}
+      <div class="word-list">${R.missed.map(rowView).join('')}</div>` : ''}
     </div>
     <footer class="foot"><div class="wrap" style="display:flex;flex-direction:column;gap:10px">
       ${R.missed.length && R.mode !== 'flash' ? `<button class="btn" data-act="retry-missed">${I.redo}틀린 것만 다시 풀기</button>` : ''}
@@ -1219,6 +1425,7 @@ function modalView() {
       <li>번호 열이 있으면 알아서 건너뛰어요. 뜻이 왼쪽에 있어도 한글을 보고 자리를 찾아요.</li>
       <li><code>look/watch</code>처럼 /로 나눈 답은 하나만 써도 정답, <code>take care of + 명사</code>의 + 뒤 문법 표시는 답에서 빼고 채점해요.</li>
       <li>띄어쓰기는 달라도 되고, <code>brother and sister</code>처럼 and로 이어진 말은 순서를 바꿔도 정답이에요.</li>
+      <li>단어장 화면의 <b>문장 늘리기</b>를 누르면 내 문장으로 부정문·의문문·시제·주어 바꾸기와 더 긴 문장 문제를 만들어요.</li>
       <li>네 단어 이상이거나 마침표로 끝나면 <b>문장</b>으로 보고 문장 만들기 문제를 내요.</li>
       <li><code>예문</code>, <code>예문해석</code> 열을 추가하면 예문도 문장 문제로 들어가요.</li>
       <li>시트를 여러 개 쓰면 Day별로 단어장을 나눌 수 있어요.</li>
@@ -1335,6 +1542,12 @@ const ACT = {
   'home': () => { UI.screen = 'home'; UI.modal = null; render(true); },
   'open-deck': el => go('deck', { deckId: el.dataset.id, showAll: false }),
   'show-all': () => { UI.showAll = !UI.showAll; render(); },
+  'expand': () => {
+    const d = deckById(UI.deckId); if (!d) return;
+    const { made, from } = expandDeck(d); save(); render();
+    toast(made ? `문장 ${from}개에서 연습 문장 ${made}개를 만들었어요` : '바꿀 수 있는 문장 구조를 찾지 못했어요');
+  },
+  'unexpand': () => { const d = deckById(UI.deckId); if (!d) return; d.items = d.items.filter(i => !i.gen); save(); render(); toast('확장 문장을 지웠어요'); },
   'set-count': el => { DB.settings.count = +el.dataset.v; save(); render(); },
   'toggle': el => { const k = el.dataset.k; DB.settings[k] = !DB.settings[k]; save(); render(); },
   'ask-delete': () => { UI.modal = { type: 'delete' }; render(); },
