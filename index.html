@@ -80,6 +80,7 @@ svg.i .f { fill: currentColor; stroke: none; }
 .screen { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 .body { flex: 1; overflow-y: auto; min-height: 0; padding-block: 8px 24px; display: flex; flex-direction: column; gap: 20px; }
+.body > *, .q-body > * { flex-shrink: 0; }
 
 /* top bars */
 .bar { display: flex; align-items: center; gap: 12px; padding-block: 12px; min-height: 60px; }
@@ -161,6 +162,8 @@ svg.i .f { fill: currentColor; stroke: none; }
 .gen-tag { display: inline-block; font-size: 12px; font-weight: 800; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
 .bubble.src span { display: flex; flex-direction: column; gap: 2px; }
 .bubble.src small { font-size: 14px; font-weight: 500; color: var(--muted); }
+.add-row { display: flex; gap: 10px; margin-top: -6px; }
+.add-row .btn { flex: 1 1 0; width: auto; padding: 0 10px; gap: 6px; white-space: nowrap; }
 .settings { display: flex; flex-direction: column; gap: 2px; background: var(--surface); border: 2px solid var(--line); border-radius: var(--r); padding: 4px 14px; }
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; }
 .set-row + .set-row { border-top: 1.5px solid var(--line); }
@@ -316,6 +319,7 @@ svg.i .f { fill: currentColor; stroke: none; }
 .field input, .field textarea { width: 100%; border: 2px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 14px; font-size: 16px; }
 .field textarea { min-height: 220px; resize: vertical; line-height: 1.6; font-family: var(--font-body); }
 .field input:focus, .field textarea:focus { outline: none; border-color: var(--accent); }
+.target-line { margin: 0; font-weight: 700; font-size: 15px; color: var(--accent); }
 .preview-line { font-size: 14px; color: var(--muted); font-weight: 700; }
 .preview-line b { color: var(--good); }
 
@@ -782,21 +786,50 @@ function expandSentence(text) {
   const out = change.slice(0, 2).concat(long.slice(0, 1));
   return out.filter((v, i) => v.t.toLowerCase() !== text.trim().toLowerCase() && out.findIndex(x => x.t === v.t) === i);
 }
+function variantsFor(it, have) {
+  if (it.k !== 's' || it.gen) return [];
+  return expandSentence(it.t).filter(v => !have.has(v.t.toLowerCase())).map(v => {
+    have.add(v.t.toLowerCase());
+    return { id: uid(), t: v.t, m: '', k: 's', c: 0, w: 0, last: 0, gen: { tag: v.tag, label: v.label, from: it.t, fromM: it.m } };
+  });
+}
 function expandDeck(d) {
   d.items = d.items.filter(i => !i.gen);
   const have = new Set(d.items.map(i => i.t.toLowerCase()));
   let made = 0, from = 0;
   for (const it of d.items.slice()) {
-    if (it.k !== 's') continue;
-    const vs = expandSentence(it.t).filter(v => !have.has(v.t.toLowerCase()));
+    const vs = variantsFor(it, have);
     if (vs.length) from++;
-    for (const v of vs) {
-      have.add(v.t.toLowerCase());
-      d.items.push({ id: uid(), t: v.t, m: '', k: 's', c: 0, w: 0, last: 0, gen: { tag: v.tag, label: v.label, from: it.t, fromM: it.m } });
-      made++;
-    }
+    d.items.push(...vs); made += vs.length;
   }
   return { made, from };
+}
+// add new rows to an existing deck: duplicates are skipped, empty meanings get filled,
+// and when the deck is already expanded the new sentences get their practice variants too
+function mergeInto(d, pairs) {
+  const own = d.items.filter(i => !i.gen), gen = d.items.filter(i => i.gen);
+  const byT = new Map(own.map(i => [i.t.toLowerCase(), i]));
+  const r = { w: 0, s: 0, dup: 0, filled: 0, made: 0 };
+  const fresh = [];
+  for (const it of makeItems(pairs)) {
+    const ex = byT.get(it.t.toLowerCase());
+    if (ex) { if (!ex.m && it.m) { ex.m = it.m; r.filled++; } else r.dup++; continue; }
+    byT.set(it.t.toLowerCase(), it); fresh.push(it); r[it.k]++;
+  }
+  const keepGen = gen.filter(g => !byT.has(g.t.toLowerCase()));
+  const extra = [];
+  if (gen.length) { const have = new Set([...byT.keys(), ...keepGen.map(g => g.t.toLowerCase())]); for (const it of fresh) extra.push(...variantsFor(it, have)); }
+  r.made = extra.length;
+  d.items = own.concat(fresh, keepGen, extra);
+  return r;
+}
+function mergeSummary(r) {
+  const parts = [];
+  if (r.w || r.s) parts.push(`단어 ${r.w}개, 문장 ${r.s}개를 추가했어요`);
+  if (r.filled) parts.push(`비어 있던 뜻 ${r.filled}개를 채웠어요`);
+  if (r.made) parts.push(`연습 문장 ${r.made}개도 만들었어요`);
+  if (r.dup) parts.push(`이미 있는 ${r.dup}개는 건너뛰었어요`);
+  return parts.length ? parts.join(' · ') : '새로 추가할 항목이 없어요';
 }
 
 /* ---------- data ---------- */
@@ -958,6 +991,10 @@ function deckView() {
         <div class="set-row"><span>영어 자동 발음</span><button class="switch" role="switch" aria-label="영어 자동 발음" aria-checked="${DB.settings.autoplay && TTS}" data-act="toggle" data-k="autoplay" ${TTS ? '' : 'disabled'}></button></div>
       </div>
       <h2 class="sec-title"><span>항목</span><span>${d.items.length}개</span></h2>
+      <div class="add-row">
+        <button class="btn ghost sm" data-act="add-file">${I.upload}엑셀로 추가</button>
+        <button class="btn ghost sm" data-act="add-paste">${I.paste}붙여넣어 추가</button>
+      </div>
       <div class="word-list">
         ${list.map(rowView).join('')}
         ${d.items.length > 8 ? `<button class="more" data-act="show-all">${UI.showAll ? '접기' : `${d.items.length - 8}개 더 보기`}</button>` : ''}
@@ -1385,16 +1422,17 @@ function resultView() {
 
 /* ---------- paste screen ---------- */
 function pasteView() {
+  const target = UI.pasteTarget && deckById(UI.pasteTarget);
   return `<section class="screen">
-    <header class="bar wrap"><button class="icon-btn" data-act="home" aria-label="뒤로">${I.back}</button><h1>붙여넣어 만들기</h1></header>
+    <header class="bar wrap"><button class="icon-btn" data-act="paste-back" aria-label="뒤로">${I.back}</button><h1>${target ? '단어 추가' : '붙여넣어 만들기'}</h1></header>
     <div class="body wrap">
-      <div class="field"><label for="paste-name">단어장 이름</label><input id="paste-name" value="${esc(UI.pasteName || '')}" placeholder="예: 3과 필수 단어"></div>
+      ${target ? `<p class="target-line">「${esc(target.name)}」에 추가해요. 이미 있는 항목은 건너뛰어요.</p>` : `<div class="field"><label for="paste-name">단어장 이름</label><input id="paste-name" value="${esc(UI.pasteName || '')}" placeholder="예: 3과 필수 단어"></div>`}
       <div class="field"><label for="paste-in">한 줄에 하나씩</label>
         <textarea id="paste-in" placeholder="apple - 사과&#10;give up	포기하다&#10;She borrowed a book. 그녀는 책을 빌렸다.">${esc(UI.pasteText || '')}</textarea></div>
       <p class="hint" style="margin:-8px 0 0">엑셀에서 두 열을 복사해 붙여넣어도 돼요. 영어와 뜻 사이는 탭, -, =, : 중 아무거나 써도 됩니다.</p>
       <span class="preview-line" id="paste-preview">${pastePreview()}</span>
     </div>
-    <footer class="foot"><div class="wrap"><button class="btn" data-act="paste-save" id="paste-save" ${parseText(UI.pasteText || '').length ? '' : 'disabled'}>단어장 만들기</button></div></footer>
+    <footer class="foot"><div class="wrap"><button class="btn" data-act="paste-save" id="paste-save" ${parseText(UI.pasteText || '').length ? '' : 'disabled'}>${target ? '추가하기' : '단어장 만들기'}</button></div></footer>
   </section>`;
 }
 function pastePreview() {
@@ -1402,6 +1440,12 @@ function pastePreview() {
   if (!p.length) return '아직 읽은 항목이 없어요';
   const items = makeItems(p);
   const s = items.filter(i => i.k === 's').length;
+  const target = UI.pasteTarget && deckById(UI.pasteTarget);
+  if (target) {
+    const have = new Set(target.items.filter(i => !i.gen).map(i => i.t.toLowerCase()));
+    const dup = items.filter(i => have.has(i.t.toLowerCase())).length;
+    return `<b>새 항목 ${items.length - dup}개</b> · 단어 ${items.filter(i => i.k === 'w' && !have.has(i.t.toLowerCase())).length} · 문장 ${items.filter(i => i.k === 's' && !have.has(i.t.toLowerCase())).length}${dup ? ` · 이미 있음 ${dup}` : ''}`;
+  }
   return `<b>${items.length}개</b> 읽음 · 단어 ${items.length - s} · 문장 ${s}${items.some(i => !i.m) ? ' · 뜻 없는 항목 있음' : ''}`;
 }
 
@@ -1428,6 +1472,7 @@ function modalView() {
       <li>단어장 화면의 <b>문장 늘리기</b>를 누르면 내 문장으로 부정문·의문문·시제·주어 바꾸기와 더 긴 문장 문제를 만들어요.</li>
       <li>네 단어 이상이거나 마침표로 끝나면 <b>문장</b>으로 보고 문장 만들기 문제를 내요.</li>
       <li><code>예문</code>, <code>예문해석</code> 열을 추가하면 예문도 문장 문제로 들어가요.</li>
+      <li>이미 만든 단어장에는 단어장 화면의 <b>엑셀로 추가</b> · <b>붙여넣어 추가</b>로 더 넣을 수 있어요. 겹치는 항목은 건너뛰어요.</li>
       <li>시트를 여러 개 쓰면 Day별로 단어장을 나눌 수 있어요.</li>
       <li>.xlsx, .xls, .csv, .txt 모두 읽어요.</li>
     </ul>
@@ -1469,7 +1514,7 @@ function afterRender() {
   if (UI.screen === 'paste') {
     const ta = $('#paste-in'), nm = $('#paste-name');
     ta.addEventListener('input', () => { UI.pasteText = ta.value; $('#paste-preview').innerHTML = pastePreview(); $('#paste-save').disabled = !parseText(ta.value).length; });
-    nm.addEventListener('input', () => { UI.pasteName = nm.value; });
+    if (nm) nm.addEventListener('input', () => { UI.pasteName = nm.value; });
   }
   if (UI.screen === 'flash' && F) bindSwipe($('#card'));
 }
@@ -1509,8 +1554,17 @@ async function importChosen(file) {
     return;
   }
   if (!sheets.length) { toast('읽을 수 있는 단어가 없어요. A열에 영어, B열에 뜻을 넣어 주세요.'); return; }
+  const target = UI.addTo && deckById(UI.addTo);
+  UI.addTo = null;
+  if (target) return addToDeck(target, sheets.flatMap(s => s.pairs));
   if (sheets.length > 1) { UI.modal = { type: 'sheets', sheets, base: file.name.replace(/\.[^.]+$/, '') }; render(); return; }
   addDecks([makeDeck(sheets[0].name, sheets[0].pairs)]);
+}
+function addToDeck(d, pairs) {
+  const r = mergeInto(d, pairs); save();
+  UI.pasteText = ''; UI.pasteTarget = null;
+  go('deck', { deckId: d.id, showAll: false });
+  toast(mergeSummary(r));
 }
 function addDecks(decks) {
   decks = decks.filter(d => d.items.length);
@@ -1533,8 +1587,11 @@ function downloadTemplate() {
 }
 
 const ACT = {
-  'pick-file': () => { const f = $('#file-in'); f.value = ''; f.click(); },
-  'paste': () => go('paste'),
+  'pick-file': () => { UI.addTo = null; const f = $('#file-in'); f.value = ''; f.click(); },
+  'paste': () => go('paste', { pasteTarget: null }),
+  'add-file': () => { UI.addTo = UI.deckId; const f = $('#file-in'); f.value = ''; f.click(); },
+  'add-paste': () => { UI.pasteText = ''; go('paste', { pasteTarget: UI.deckId }); },
+  'paste-back': () => { const t = UI.pasteTarget && deckById(UI.pasteTarget); UI.pasteTarget = null; UI.screen = t ? 'deck' : 'home'; render(true); },
   'guide': () => { UI.modal = { type: 'guide' }; render(); },
   'template': downloadTemplate,
   'close-modal': () => { UI.modal = null; render(); },
@@ -1576,6 +1633,8 @@ const ACT = {
   'back-deck': () => { UI.deckId = R.deckId; UI.screen = deckById(R.deckId) ? 'deck' : 'home'; render(true); },
   'paste-save': () => {
     const pairs = parseText(UI.pasteText || ''); if (!pairs.length) return;
+    const target = UI.pasteTarget && deckById(UI.pasteTarget);
+    if (target) return addToDeck(target, pairs);
     const name = (UI.pasteName || '').trim() || `붙여넣은 단어장 ${new Date().getMonth() + 1}/${new Date().getDate()}`;
     UI.pasteText = ''; UI.pasteName = '';
     addDecks([makeDeck(name, pairs)]);
@@ -1610,14 +1669,14 @@ window.addEventListener('popstate', () => {
     UI.modal = { type: 'quit' }; render(); return;
   }
   if (UI.modal) { UI.modal = null; render(); return; }
-  if (UI.screen === 'result') { UI.screen = 'deck'; render(true); return; }
+  if (UI.screen === 'result' || (UI.screen === 'paste' && UI.pasteTarget)) { UI.pasteTarget = null; UI.screen = 'deck'; render(true); return; }
   UI.screen = 'home'; render(true);
 });
 const app = $('#app');
 ['dragover', 'drop'].forEach(t => app.addEventListener(t, e => {
   if (!e.dataTransfer || ![...(e.dataTransfer.types || [])].includes('Files')) return;
   e.preventDefault();
-  if (t === 'drop' && e.dataTransfer.files[0]) importChosen(e.dataTransfer.files[0]);
+  if (t === 'drop' && e.dataTransfer.files[0]) { UI.addTo = UI.screen === 'deck' ? UI.deckId : null; importChosen(e.dataTransfer.files[0]); }
 }));
 
 render(true);
