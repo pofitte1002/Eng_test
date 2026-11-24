@@ -159,6 +159,7 @@ svg.i .f { fill: currentColor; stroke: none; }
 .expand .txt small { font-size: 13px; color: var(--muted); line-height: 1.45; }
 .expand .row { display: flex; gap: 8px; flex-wrap: wrap; }
 .expand .row .btn { width: auto; flex: 1 1 auto; }
+.tag.hard { color: var(--bad); background: var(--bad-soft); }
 .gen-tag { display: inline-block; font-size: 12px; font-weight: 800; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
 .bubble.src span { display: flex; flex-direction: column; gap: 2px; }
 .bubble.src small { font-size: 14px; font-weight: 500; color: var(--muted); }
@@ -875,7 +876,7 @@ DB.settings = Object.assign({ count: 10, sound: true, autoplay: true }, DB.setti
 DB.streak = DB.streak || { last: null, days: 0 };
 if (!DB.seeded) { DB.decks.push(makeDeck('예시 단어장', SAMPLE, true)); DB.seeded = true; save(); }
 
-const deckById = id => id === 'IRR' ? IRR_DECK : DB.decks.find(d => d.id === id);
+const deckById = id => id === 'IRR' ? IRR_DECK : id === 'IRRH' ? IRRH_DECK : DB.decks.find(d => d.id === id);
 const level = it => (it.c >= 3 && it.c >= it.w * 2) ? 2 : (it.c + it.w > 0 ? 1 : 0);
 function deckStats(d) {
   const s = { w: 0, s: 0, g: 0, l0: 0, l1: 0, l2: 0, wrong: 0, n: d.items.length };
@@ -940,7 +941,8 @@ function homeView() {
         <button class="link-btn" data-act="guide">파일은 어떻게 만들어요?</button>
       </div>
       <h2 class="sec-title"><span>기본 학습</span></h2>
-      ${irrCard()}
+      ${irrCard(IRR_DECK)}
+      ${irrCard(IRRH_DECK)}
       <h2 class="sec-title"><span>내 단어장</span><span>${decks.length}개</span></h2>
       <div class="deck-list">
         ${decks.length ? decks.map(deckCard).join('') : `<div class="empty">아직 단어장이 없어요.<br>위에서 엑셀 파일을 불러와 주세요.</div>`}
@@ -948,10 +950,10 @@ function homeView() {
     </div>
   </section>`;
 }
-function irrCard() {
-  const s = deckStats(IRR_DECK);
-  return `<button class="deck-card" data-act="open-irr">
-    <div class="top"><span class="name">불규칙 동사 ${IRR.length}</span><span class="tag">과거분사</span></div>
+function irrCard(D) {
+  const s = deckStats(D);
+  return `<button class="deck-card" data-act="open-irr" data-id="${D.id}">
+    <div class="top"><span class="name">${D.hard ? `불규칙 동사 하드모드 ${D.items.length}` : `불규칙 동사 ${D.items.length}`}</span><span class="tag${D.hard ? ' hard' : ''}">${D.hard ? '체크한 동사' : '과거분사'}</span></div>
     <div class="meta"><span>현재 – 과거 – 과거분사</span><span>외움 ${s.l2}/${s.n}</span></div>
     <div class="meter" aria-hidden="true"><i class="m1" style="width:${s.l2 / s.n * 100}%"></i><i class="m2" style="width:${s.l1 / s.n * 100}%"></i></div>
   </button>`;
@@ -1062,25 +1064,32 @@ const IRR = IRR_ROWS.split('\n').map((line, i) => {
   it.pat = past === pp ? 'ABB' : t === pp ? 'ABA' : 'ABC';
   return it;
 });
+// 하드모드: verbs checked on the printed table, drilled with their own progress
+const HARD_VERBS = 'bear beat bend bite bleed blow dig fight flee fly grow hang lay lead lend lie lose mean pay ride ring rise seek shake shine shoot sink smell stand steal strike swear teach tear wake wear weep'.split(' ');
+const IRRH = IRR.filter(v => HARD_VERBS.includes(v.t)).map((v, i) => ({ ...v, id: 'h:' + v.t, n: i + 1 }));
 function bindIrrStats() {
   DB.irr = DB.irr || {};
-  for (const it of IRR) {
+  for (const it of IRR.concat(IRRH)) {
     const st = DB.irr[it.id] || (DB.irr[it.id] = { c: 0, w: 0, last: 0 });
     for (const k of ['c', 'w', 'last']) Object.defineProperty(it, k, { get: () => st[k], set: v => { st[k] = v; }, enumerable: true, configurable: true });
   }
 }
 bindIrrStats();
-const IRR_DECK = { id: 'IRR', name: '불규칙 동사', items: IRR };
-const deckScreen = id => id === 'IRR' ? 'irr' : 'deck';
-const IRR_RANGES = ['all', '1-20', '21-40', '41-60', '61-' + IRR.length];
+const rangesFor = n => ['all'].concat(Array.from({ length: Math.ceil(n / 20) }, (_, i) => `${i * 20 + 1}-${Math.min(n, i * 20 + 20)}`));
+const IRR_DECK = { id: 'IRR', name: '불규칙 동사', title: `불규칙 동사 ${IRR.length}`, items: IRR, key: 'irr', ranges: rangesFor(IRR.length) };
+const IRRH_DECK = { id: 'IRRH', name: '불규칙 동사 하드모드', title: '하드모드', items: IRRH, key: 'irrh', hard: true, ranges: rangesFor(IRRH.length) };
+const irrDeck = () => UI.deckId === 'IRRH' ? IRRH_DECK : IRR_DECK;
+const deckScreen = id => id === 'IRR' || id === 'IRRH' ? 'irr' : 'deck';
 const IRR_PATS = { all: '전체', ABC: 'A-B-C', ABB: 'A-B-B', ABA: 'A-B-A' };
-if (!(DB.settings.irrPat in IRR_PATS)) DB.settings.irrPat = 'all';
-if (!IRR_RANGES.includes(DB.settings.irrRange)) DB.settings.irrRange = 'all';
+for (const d of [IRR_DECK, IRRH_DECK]) {
+  if (!(DB.settings[d.key + 'Pat'] in IRR_PATS)) DB.settings[d.key + 'Pat'] = 'all';
+  if (!d.ranges.includes(DB.settings[d.key + 'Range'])) DB.settings[d.key + 'Range'] = 'all';
+}
 const IRR_PAT_HINT = { all: '변화 유형을 고르면 비슷한 동사끼리 묶어 외울 수 있어요.', ABC: 'A-B-C · 셋 다 달라요 (go – went – gone)', ABB: 'A-B-B · 과거와 과거분사가 같아요 (make – made – made)', ABA: 'A-B-A · 원형과 과거분사가 같아요 (come – came – come)' };
 function irrSelected() {
-  const r = DB.settings.irrRange || 'all', p = DB.settings.irrPat || 'all';
+  const d = irrDeck(), r = DB.settings[d.key + 'Range'] || 'all', p = DB.settings[d.key + 'Pat'] || 'all';
   const [lo, hi] = r === 'all' ? [1, 999] : r.split('-').map(Number);
-  return IRR.filter(v => v.n >= lo && v.n <= hi && (p === 'all' || v.pat === p));
+  return d.items.filter(v => v.n >= lo && v.n <= hi && (p === 'all' || v.pat === p));
 }
 const irrForms = it => [it.t, it.past, it.pp || '—'].join(' – ');
 const irrSay = it => [it.t, it.past.replace('/', ' or '), it.pp].filter(Boolean).join(', ');
@@ -1128,14 +1137,16 @@ function irrQueue(mode, forced) {
   }
   const items = forced ? forced.filter(v => v.pp) : mode === 'review' ? choose(sel.filter(v => v.w > 0 && level(v) < 2), n) : choose(sel, n);
   const all = ['irr-mc', 'irr-type', 'irr-spell', 'irr-ko'];
-  const q = items.map(v => makeIrrQ(all.includes(mode) ? mode : (v.c + v.w === 0 ? 'irr-mc' : pick(all)), v));
+  // hard mode leans on writing the forms from memory instead of recognising them
+  const hardMix = ['irr-type', 'irr-type', 'irr-ko', 'irr-spell', 'irr-mc'];
+  const q = items.map(v => makeIrrQ(all.includes(mode) ? mode : irrDeck().hard ? pick(hardMix) : (v.c + v.w === 0 ? 'irr-mc' : pick(all)), v));
   if (mode === 'mixed' && !forced && q.length >= 6) q.splice(4, 0, makeMatch(shuffle(items).slice(0, 5), 'pp'));
   return q;
 }
 function irrView() {
-  const st = DB.settings, sel = irrSelected(), drill = sel.filter(v => v.pp);
+  const D = irrDeck(), st = DB.settings, sel = irrSelected(), drill = sel.filter(v => v.pp);
   const s = deckStats({ items: sel }), n = s.n || 1;
-  const all = deckStats(IRR_DECK);
+  const all = deckStats(D);
   const wrong = drill.filter(v => v.w > 0 && level(v) < 2).length;
   const modes = [
     { id: 'irr-mc', name: '과거분사 고르기', sub: '헷갈리는 형태 중 고르기', icon: I.choice, ok: drill.length > 0 },
@@ -1152,7 +1163,7 @@ function irrView() {
   return `<section class="screen">
     <header class="bar wrap">
       <button class="icon-btn" data-act="home" aria-label="뒤로">${I.back}</button>
-      <h1>불규칙 동사 ${IRR.length}</h1>
+      <h1>${D.hard ? `하드모드 ${D.items.length}` : D.title}</h1>
     </header>
     <div class="body wrap">
       <div class="deck-head">
@@ -1164,9 +1175,10 @@ function irrView() {
         <div class="meter"><i class="m1" style="width:${s.l2 / n * 100}%"></i><i class="m2" style="width:${s.l1 / n * 100}%"></i></div>
       </div>
       <div class="filters">
-        <div class="chips" role="group" aria-label="범위">${IRR_RANGES.map(r => chip('irr-range', r, r === 'all' ? '전체' : r, (st.irrRange || 'all') === r)).join('')}</div>
-        <div class="chips" role="group" aria-label="변화 유형">${Object.entries(IRR_PATS).map(([k, v]) => chip('irr-pat', k, v, (st.irrPat || 'all') === k)).join('')}</div>
-        <p class="hint" style="margin:0">${IRR_PAT_HINT[st.irrPat || 'all']}</p>
+        ${D.hard ? `<p class="hint" style="margin:0">표에서 체크한 ${D.items.length}개만 모았어요. 레슨은 직접 쓰는 문제 위주로 나와요.</p>` : ''}
+        <div class="chips" role="group" aria-label="범위">${D.ranges.map(r => chip('irr-range', r, r === 'all' ? '전체' : r, st[D.key + 'Range'] === r)).join('')}</div>
+        <div class="chips" role="group" aria-label="변화 유형">${Object.entries(IRR_PATS).map(([k, v]) => chip('irr-pat', k, v, st[D.key + 'Pat'] === k)).join('')}</div>
+        <p class="hint" style="margin:0">${IRR_PAT_HINT[st[D.key + 'Pat']]}</p>
       </div>
       <button class="btn" data-act="start" data-mode="mixed" ${drill.length ? '' : 'disabled'}>${I.play}레슨 시작</button>
       <div class="modes">
@@ -1328,7 +1340,7 @@ function choose(items, n) {
 }
 
 function buildQueue(mode, d, forced) {
-  if (d.id === 'IRR') return irrQueue(mode, forced);
+  if (d.id === 'IRR' || d.id === 'IRRH') return irrQueue(mode, forced);
   const pool = d.items;
   const n = DB.settings.count || 9999;
   const quizzable = pool.filter(it => kindsFor(it).length);
@@ -1641,7 +1653,7 @@ function startFlash() {
   const d = deckById(UI.deckId); if (!d || !d.items.length) return;
   const n = DB.settings.count || 9999;
   d.used = Date.now(); save();
-  const items = choose(d.id === 'IRR' ? irrSelected() : d.items, n);
+  const items = choose(deckScreen(d.id) === 'irr' ? irrSelected() : d.items, n);
   if (!items.length) return;
   F = { deckId: d.id, queue: items.slice(), idx: 0, total: items.length, known: 0, again: new Map(), flipped: false, start: Date.now() };
   go('flash');
@@ -1901,9 +1913,9 @@ const ACT = {
   'backdrop': (el, e) => { if (e.target === el && UI.modal && UI.modal.type !== 'quit') { UI.modal = null; render(); } },
   'home': () => { UI.screen = 'home'; UI.modal = null; render(true); },
   'open-deck': el => go('deck', { deckId: el.dataset.id, showAll: false }),
-  'open-irr': () => go('irr', { deckId: 'IRR' }),
-  'irr-range': el => { DB.settings.irrRange = el.dataset.v; save(); render(); },
-  'irr-pat': el => { DB.settings.irrPat = el.dataset.v; save(); render(); },
+  'open-irr': el => go('irr', { deckId: el.dataset.id }),
+  'irr-range': el => { DB.settings[irrDeck().key + 'Range'] = el.dataset.v; save(); render(); },
+  'irr-pat': el => { DB.settings[irrDeck().key + 'Pat'] = el.dataset.v; save(); render(); },
   'peek': el => { UI.revealed.add(el.dataset.id); render(); },
   'show-all': () => { UI.showAll = !UI.showAll; render(); },
   'expand': () => {
