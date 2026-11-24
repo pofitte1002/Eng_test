@@ -951,9 +951,9 @@ function homeView() {
 function irrCard() {
   const s = deckStats(IRR_DECK);
   return `<button class="deck-card" data-act="open-irr">
-    <div class="top"><span class="name">불규칙 동사 100</span><span class="tag">과거분사</span></div>
-    <div class="meta"><span>현재 – 과거 – 과거분사</span><span>외움 ${s.l2}/100</span></div>
-    <div class="meter" aria-hidden="true"><i class="m1" style="width:${s.l2}%"></i><i class="m2" style="width:${s.l1}%"></i></div>
+    <div class="top"><span class="name">불규칙 동사 ${IRR.length}</span><span class="tag">과거분사</span></div>
+    <div class="meta"><span>현재 – 과거 – 과거분사</span><span>외움 ${s.l2}/${s.n}</span></div>
+    <div class="meter" aria-hidden="true"><i class="m1" style="width:${s.l2 / s.n * 100}%"></i><i class="m2" style="width:${s.l1 / s.n * 100}%"></i></div>
   </button>`;
 }
 function deckCard(d) {
@@ -966,8 +966,7 @@ function deckCard(d) {
 }
 
 /* ---------- irregular verbs: built-in table (불규칙 동사 변화표 100) ---------- */
-const IRR_ROWS = `be|was/were|been|이다, 있다
-become|became|become|~이 되다
+const IRR_ROWS = `become|became|become|~이 되다
 bear|bore|born|낳다
 beat|beat|beaten|치다
 begin|began|begun|시작하다
@@ -979,13 +978,9 @@ break|broke|broken|깨트리다
 bring|brought|brought|가져오다
 build|built|built|짓다
 buy|bought|bought|사다
-can|could||할 수 있다
-cast|cast|cast|던지다
 catch|caught|caught|잡다
 choose|chose|chosen|선택하다
 come|came|come|오다
-cost|cost|cost|값이 나가다
-cut|cut|cut|자르다
 dig|dug|dug|파다
 do|did|done|하다
 draw|drew|drawn|그리다
@@ -1008,24 +1003,18 @@ hang|hung|hung|걸다
 have|had|had|가지다
 hear|heard|heard|듣다
 hide|hid|hidden|숨기다
-hit|hit|hit|치다
 hold|held|held|쥐다, 개최하다
-hurt|hurt|hurt|상처내다
 keep|kept|kept|유지하다
 know|knew|known|알다
 lay|laid|laid|놓다
 lead|led|led|이끌다
 leave|left|left|떠나다
 lend|lent|lent|빌려주다
-let|let|let|시키다
 lie|lay|lain|놓여 있다, 눕다
 lose|lost|lost|잃다
 make|made|made|만들다
-may|might||해도 된다
 mean|meant|meant|의미하다
 pay|paid|paid|지불하다
-put|put|put|놓다
-read|read|read|읽다
 ride|rode|ridden|타다
 ring|rang|rung|울리다
 rise|rose|risen|오르다, 일어나다
@@ -1040,7 +1029,6 @@ shine|shone|shone|빛나다
 shoot|shot|shot|쏘다
 show|showed|shown|보여 주다
 shrink|shrank|shrunk|줄어들다
-shut|shut|shut|닫다
 sing|sang|sung|노래 부르다
 sink|sank|sunk|가라앉다
 sit|sat|sat|앉다
@@ -1063,16 +1051,15 @@ throw|threw|thrown|던지다
 wake|woke|woken|깨우다
 wear|wore|worn|입다
 weep|wept|wept|울다
-will|would||할 것이다
 write|wrote|written|쓰다
 win|won|won|이기다`;
+// be, modals (can/may/will) and A-A-A verbs (cut – cut – cut) are left out on purpose
 // other accepted spellings (never offered as wrong choices)
 const IRR_ALT = { get: { pp: ['got'] }, smell: { past: ['smelled'], pp: ['smelled'] }, bear: { pp: ['borne'] }, shine: { past: ['shined'], pp: ['shined'] }, hang: { past: ['hanged'], pp: ['hanged'] }, speed: { past: ['speeded'], pp: ['speeded'] } };
 const IRR = IRR_ROWS.split('\n').map((line, i) => {
   const [t, past, pp, m] = line.split('|');
   const it = { id: 'v:' + t, n: i + 1, t, past, pp, m, k: 'w', irr: true, alt: IRR_ALT[t] || {} };
-  it.pat = !pp ? '' : t === past && past === pp ? 'AAA' : past === pp ? 'ABB' : t === pp ? 'ABA' : 'ABC';
-  if (t === 'be') it.note = 'am·is → was, are → were';
+  it.pat = past === pp ? 'ABB' : t === pp ? 'ABA' : 'ABC';
   return it;
 });
 function bindIrrStats() {
@@ -1083,11 +1070,13 @@ function bindIrrStats() {
   }
 }
 bindIrrStats();
-const IRR_DECK = { id: 'IRR', name: '불규칙 동사 100', items: IRR };
+const IRR_DECK = { id: 'IRR', name: '불규칙 동사', items: IRR };
 const deckScreen = id => id === 'IRR' ? 'irr' : 'deck';
-const IRR_RANGES = ['all', '1-20', '21-40', '41-60', '61-80', '81-100'];
-const IRR_PATS = { all: '전체', ABC: 'A-B-C', ABB: 'A-B-B', AAA: 'A-A-A', ABA: 'A-B-A' };
-const IRR_PAT_HINT = { all: '변화 유형을 고르면 비슷한 동사끼리 묶어 외울 수 있어요.', ABC: 'A-B-C · 셋 다 달라요 (go – went – gone)', ABB: 'A-B-B · 과거와 과거분사가 같아요 (make – made – made)', AAA: 'A-A-A · 셋 다 같아요 (cut – cut – cut)', ABA: 'A-B-A · 원형과 과거분사가 같아요 (come – came – come)' };
+const IRR_RANGES = ['all', '1-20', '21-40', '41-60', '61-' + IRR.length];
+const IRR_PATS = { all: '전체', ABC: 'A-B-C', ABB: 'A-B-B', ABA: 'A-B-A' };
+if (!(DB.settings.irrPat in IRR_PATS)) DB.settings.irrPat = 'all';
+if (!IRR_RANGES.includes(DB.settings.irrRange)) DB.settings.irrRange = 'all';
+const IRR_PAT_HINT = { all: '변화 유형을 고르면 비슷한 동사끼리 묶어 외울 수 있어요.', ABC: 'A-B-C · 셋 다 달라요 (go – went – gone)', ABB: 'A-B-B · 과거와 과거분사가 같아요 (make – made – made)', ABA: 'A-B-A · 원형과 과거분사가 같아요 (come – came – come)' };
 function irrSelected() {
   const r = DB.settings.irrRange || 'all', p = DB.settings.irrPat || 'all';
   const [lo, hi] = r === 'all' ? [1, 999] : r.split('-').map(Number);
@@ -1163,14 +1152,14 @@ function irrView() {
   return `<section class="screen">
     <header class="bar wrap">
       <button class="icon-btn" data-act="home" aria-label="뒤로">${I.back}</button>
-      <h1>불규칙 동사 100</h1>
+      <h1>불규칙 동사 ${IRR.length}</h1>
     </header>
     <div class="body wrap">
       <div class="deck-head">
         <div class="counts">
           <span class="stat-pill">고른 동사 <b>${sel.length}</b></span>
           <span class="stat-pill">외움 <b>${Math.round(s.l2 / n * 100)}%</b></span>
-          <span class="stat-pill">전체 외움 <b>${all.l2}/100</b></span>
+          <span class="stat-pill">전체 외움 <b>${all.l2}/${all.n}</b></span>
         </div>
         <div class="meter"><i class="m1" style="width:${s.l2 / n * 100}%"></i><i class="m2" style="width:${s.l1 / n * 100}%"></i></div>
       </div>
@@ -1190,7 +1179,7 @@ function irrView() {
       <div class="word-list">
         ${sel.length ? sel.map(it => `<div class="irr-row"><span class="no">${it.n}</span>
           <div class="forms"><b>${esc(it.t)}</b><i>–</i>${cell(it, 'past')}<i>–</i>${it.pp ? cell(it, 'pp') : '<span>—</span>'}</div>
-          <span class="pat">${it.pat ? it.pat.split('').join('-') : '조동사'}</span>
+          <span class="pat">${it.pat.split('').join('-')}</span>
           <div class="mean"><span class="dot lv${level(it)}"></span>${esc(it.m)}${it.note ? ` · ${esc(it.note)}` : ''}</div></div>`).join('') : '<div class="empty" style="border:0">이 범위에 해당하는 동사가 없어요</div>'}
       </div>
     </div>
@@ -1778,7 +1767,7 @@ function modalView() {
       <li>네 단어 이상이거나 마침표로 끝나면 <b>문장</b>으로 보고 문장 만들기 문제를 내요.</li>
       <li><code>예문</code>, <code>예문해석</code> 열을 추가하면 예문도 문장 문제로 들어가요.</li>
       <li>이미 만든 단어장에는 단어장 화면의 <b>엑셀로 추가</b> · <b>붙여넣어 추가</b>로 더 넣을 수 있어요. 겹치는 항목은 건너뛰어요.</li>
-      <li>첫 화면의 <b>불규칙 동사 100</b>은 엑셀 없이 바로 과거·과거분사를 연습하는 기본 단어장이에요.</li>
+      <li>첫 화면의 <b>불규칙 동사</b>는 엑셀 없이 바로 과거·과거분사를 연습하는 기본 단어장이에요.</li>
       <li>시트를 여러 개 쓰면 Day별로 단어장을 나눌 수 있어요.</li>
       <li>.xlsx, .xls, .csv, .txt 모두 읽어요.</li>
     </ul>
