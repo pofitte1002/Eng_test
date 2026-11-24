@@ -183,6 +183,10 @@ svg.i .f { fill: currentColor; stroke: none; }
 .irr-m small { font-size: 13px; font-weight: 500; }
 .irr-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 22px; font-weight: 800; }
 .irr-strip .q { min-width: 64px; text-align: center; border-bottom: 3px solid var(--accent); color: var(--accent); }
+.irr-group { display: flex; flex-direction: column; gap: 8px; }
+.irr-group-label { font-weight: 800; font-size: 14px; color: var(--muted); }
+.options.two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.options.two .tile { min-height: 50px; justify-content: center; text-align: center; padding: 8px 10px; }
 .irr-inputs { display: flex; flex-direction: column; gap: 12px; }
 .irr-inputs label { display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px; color: var(--muted); }
 .irr-inputs .type-box { min-height: 0; height: 56px; font-size: 20px; }
@@ -1119,7 +1123,7 @@ function irrOptions(it, f) {
 function makeIrrQ(kind, it) {
   const q = { kind, item: it, built: [], sel: null, typed: '', tp: '', tpp: '' };
   if (kind === 'irr-spell' && !/^[a-z]{2,12}$/.test(it.pp)) q.kind = 'irr-mc';
-  if (q.kind === 'irr-mc') { q.field = it.pp && Math.random() < 0.75 ? 'pp' : 'past'; q.ans = it[q.field]; q.opts = irrOptions(it, q.field); }
+  if (q.kind === 'irr-mc') q.groups = { past: { opts: irrOptions(it, 'past'), sel: null }, pp: { opts: irrOptions(it, 'pp'), sel: null } };
   if (q.kind === 'irr-spell') { q.answer = it.pp.split(''); q.bank = letterBank(it.pp); }
   return q;
 }
@@ -1149,7 +1153,7 @@ function irrView() {
   const all = deckStats(D);
   const wrong = drill.filter(v => v.w > 0 && level(v) < 2).length;
   const modes = [
-    { id: 'irr-mc', name: '과거분사 고르기', sub: '헷갈리는 형태 중 고르기', icon: I.choice, ok: drill.length > 0 },
+    { id: 'irr-mc', name: '과거·과거분사 고르기', sub: '두 형태를 한 문제에서 고르기', icon: I.choice, ok: drill.length > 0 },
     { id: 'irr-type', name: '3단 변화 쓰기', sub: '과거·과거분사 직접 입력', icon: I.pencil, ok: drill.length > 0 },
     { id: 'irr-spell', name: '철자 맞추기', sub: '알파벳 타일로 과거분사', icon: I.puzzle, ok: drill.length > 0 },
     { id: 'irr-ko', name: '뜻 보고 쓰기', sub: '뜻 → 과거분사', icon: I.help, ok: drill.length > 0 },
@@ -1446,7 +1450,8 @@ const fmtTime = ms => { const s = Math.round(ms / 1000); return Math.floor(s / 6
 
 /* checks */
 function canCheck(q) {
-  if (q.kind === 'mc-en' || q.kind === 'mc-ko' || q.kind === 'irr-mc') return q.sel != null;
+  if (q.kind === 'irr-mc') return q.groups.past.sel != null && q.groups.pp.sel != null;
+  if (q.kind === 'mc-en' || q.kind === 'mc-ko') return q.sel != null;
   if (q.kind === 'irr-type') return q.tp.trim().length > 0 && q.tpp.trim().length > 0;
   if (q.kind === 'type' || q.kind === 'irr-ko') return q.typed.trim().length > 0;
   if (q.kind === 'match') return false;
@@ -1459,7 +1464,10 @@ function check() {
     const v = judgeTyped(q.typed, q.item.t);
     return submit(v.ok, v.note);
   }
-  if (q.kind === 'irr-mc') return submit(q.opts[q.sel] === q.ans);
+  if (q.kind === 'irr-mc') {
+    const g = q.groups, a = g.past.opts[g.past.sel] === q.item.past, b = g.pp.opts[g.pp.sel] === q.item.pp;
+    return submit(a && b, a && !b ? '과거분사가 틀렸어요' : !a && b ? '과거형이 틀렸어요' : '');
+  }
   if (q.kind === 'irr-type') {
     const a = irrMatch(q.tp, irrAccept(q.item, 'past')), b = irrMatch(q.tpp, irrAccept(q.item, 'pp'));
     return submit(a && b, a && !b ? '과거분사가 틀렸어요' : !a && b ? '과거형이 틀렸어요' : '');
@@ -1512,7 +1520,7 @@ const LABEL = {
   'spell': () => '철자를 맞춰 보세요',
   'type': () => '영어로 써 보세요',
   'match': () => '짝을 맞춰 보세요',
-  'irr-mc': (it, q) => `${q.field === 'pp' ? '과거분사' : '과거형'}를 고르세요`,
+  'irr-mc': () => '과거형과 과거분사를 고르세요',
   'irr-type': () => '과거형과 과거분사를 써 보세요',
   'irr-spell': () => '과거분사 철자를 맞춰 보세요',
   'irr-ko': () => '뜻을 보고 과거분사를 써 보세요',
@@ -1570,13 +1578,14 @@ function questionBody(q) {
         <div class="bank">${q.bank.map(b => `<button class="tile${ko}${q.built.includes(b.i) ? ' used' : ''}" data-act="build" data-i="${b.i}" ${lock} ${q.built.includes(b.i) ? 'tabindex="-1" aria-hidden="true"' : ''}>${esc(b.t)}</button>`).join('')}</div>`;
     }
     case 'irr-mc': {
-      const known = q.field === 'pp' ? [it.t, '…', '?'] : [it.t, '?', '…'];
-      return `${irrPrompt(it, spk)}<div class="irr-strip">${known.map(x => `<span${x === '?' ? ' class="q"' : ''}>${esc(x)}</span>`).join('<i>–</i>')}</div>
-        <div class="options">${q.opts.map((o, i) => {
+      const pickedText = f => q.groups[f].sel != null ? q.groups[f].opts[q.groups[f].sel] : '?';
+      const group = (f, label) => `<div class="irr-group"><span class="irr-group-label">${label}</span><div class="options two">${q.groups[f].opts.map((o, i) => {
           let cls = '';
-          if (L.answered) { if (o === q.ans) cls = ' right'; else if (i === q.sel) cls = ' wrong'; }
-          return `<button class="tile${cls}" data-act="opt" data-i="${i}" aria-pressed="${q.sel === i && !L.answered}" ${lock}><span class="n">${i + 1}</span><span>${esc(o)}</span></button>`;
-        }).join('')}</div>`;
+          if (L.answered) { if (o === it[f]) cls = ' right'; else if (i === q.groups[f].sel) cls = ' wrong'; }
+          return `<button class="tile${cls}" data-act="opt" data-g="${f}" data-i="${i}" aria-pressed="${q.groups[f].sel === i && !L.answered}" ${lock}>${esc(o)}</button>`;
+        }).join('')}</div></div>`;
+      return `${irrPrompt(it, spk)}<div class="irr-strip"><span>${esc(it.t)}</span><i>–</i><span class="q">${esc(pickedText('past'))}</span><i>–</i><span class="q">${esc(pickedText('pp'))}</span></div>
+        ${group('past', '과거')}${group('pp', '과거분사')}`;
     }
     case 'irr-type':
       return `${irrPrompt(it, spk)}
@@ -1930,7 +1939,7 @@ const ACT = {
   'delete': () => { DB.decks = DB.decks.filter(d => d.id !== UI.deckId); save(); UI.modal = null; UI.screen = 'home'; render(true); toast('단어장을 삭제했어요'); },
   'start': el => el.dataset.mode === 'flash' ? startFlash() : startLesson(el.dataset.mode),
   'say': (el, e) => { e.stopPropagation(); speak(el.dataset.t, !!el.dataset.slow); },
-  'opt': el => { const q = curQ(); if (L.answered) return; q.sel = +el.dataset.i; const ot = q.opts[q.sel]; if (q.kind === 'mc-ko' && DB.settings.autoplay) speak(ot); renderLesson(); },
+  'opt': el => { const q = curQ(); if (L.answered) return; if (el.dataset.g) { q.groups[el.dataset.g].sel = +el.dataset.i; renderLesson(); return; } q.sel = +el.dataset.i; const ot = q.opts[q.sel]; if (q.kind === 'mc-ko' && DB.settings.autoplay) speak(ot); renderLesson(); },
   'build': el => {
     const q = curQ(); if (L.answered) return; const i = +el.dataset.i;
     if (q.built.includes(i) || ((q.kind === 'spell' || q.kind === 'irr-spell') && q.built.length >= q.answer.length)) return;
@@ -1973,7 +1982,7 @@ document.addEventListener('keydown', e => {
   if (UI.screen === 'lesson' && L) {
     const q = curQ();
     if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); L.answered ? nextQ() : check(); return; }
-    if (!L.answered && (q.kind === 'mc-en' || q.kind === 'mc-ko' || q.kind === 'irr-mc') && /^[1-4]$/.test(e.key) && +e.key <= q.opts.length) { q.sel = +e.key - 1; renderLesson(); }
+    if (!L.answered && (q.kind === 'mc-en' || q.kind === 'mc-ko') && /^[1-4]$/.test(e.key) && +e.key <= q.opts.length) { q.sel = +e.key - 1; renderLesson(); }
   }
   if (UI.screen === 'flash' && F) {
     if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); F.flipped = !F.flipped; $('#card')?.classList.toggle('flipped', F.flipped); }
