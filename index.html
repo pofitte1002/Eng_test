@@ -164,6 +164,27 @@ svg.i .f { fill: currentColor; stroke: none; }
 .bubble.src small { font-size: 14px; font-weight: 500; color: var(--muted); }
 .add-row { display: flex; gap: 10px; margin-top: -6px; }
 .add-row .btn { flex: 1 1 0; width: auto; padding: 0 10px; gap: 6px; white-space: nowrap; }
+.filters { display: flex; flex-direction: column; gap: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); font-weight: 800; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chips button[aria-pressed="true"] { background: var(--fill); border-color: var(--fill); color: #fff; }
+.irr-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; column-gap: 10px; row-gap: 2px; align-items: center; padding: 10px 14px; }
+.irr-row + .irr-row { border-top: 1.5px solid var(--line); }
+.irr-row .no { grid-row: span 2; color: var(--muted); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.irr-row .forms { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 16px; font-weight: 700; min-width: 0; }
+.irr-row .forms b { font-weight: 900; }
+.irr-row .forms i, .irr-strip i { font-style: normal; color: var(--muted); font-weight: 500; }
+.irr-row .pat { grid-row: span 2; font-size: 11px; font-weight: 800; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; letter-spacing: .03em; }
+.irr-row .mean { grid-column: 2; display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.irr-row .mean .dot { width: 8px; height: 8px; flex: none; }
+.peek { min-width: 54px; height: 26px; border-radius: 7px; background: var(--line); color: var(--muted); font-weight: 900; font-size: 14px; }
+.irr-m { display: flex; flex-direction: column; font-size: 16px; color: var(--muted); font-weight: 700; margin-left: 2px; }
+.irr-m small { font-size: 13px; font-weight: 500; }
+.irr-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 22px; font-weight: 800; }
+.irr-strip .q { min-width: 64px; text-align: center; border-bottom: 3px solid var(--accent); color: var(--accent); }
+.irr-inputs { display: flex; flex-direction: column; gap: 12px; }
+.irr-inputs label { display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px; color: var(--muted); }
+.irr-inputs .type-box { min-height: 0; height: 56px; font-size: 20px; }
 .settings { display: flex; flex-direction: column; gap: 2px; background: var(--surface); border: 2px solid var(--line); border-radius: var(--r); padding: 4px 14px; }
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; }
 .set-row + .set-row { border-top: 1.5px solid var(--line); }
@@ -854,7 +875,7 @@ DB.settings = Object.assign({ count: 10, sound: true, autoplay: true }, DB.setti
 DB.streak = DB.streak || { last: null, days: 0 };
 if (!DB.seeded) { DB.decks.push(makeDeck('예시 단어장', SAMPLE, true)); DB.seeded = true; save(); }
 
-const deckById = id => DB.decks.find(d => d.id === id);
+const deckById = id => id === 'IRR' ? IRR_DECK : DB.decks.find(d => d.id === id);
 const level = it => (it.c >= 3 && it.c >= it.w * 2) ? 2 : (it.c + it.w > 0 ? 1 : 0);
 function deckStats(d) {
   const s = { w: 0, s: 0, g: 0, l0: 0, l1: 0, l2: 0, wrong: 0, n: d.items.length };
@@ -874,7 +895,7 @@ function bumpStreak() {
 }
 
 /* ---------- ui state ---------- */
-const UI = { screen: 'home', deckId: null, modal: null, showAll: false, toast: null };
+const UI = { revealed: new Set(), screen: 'home', deckId: null, modal: null, showAll: false, toast: null };
 let L = null;   // running lesson
 let F = null;   // running flashcards
 let R = null;   // last result
@@ -918,12 +939,22 @@ function homeView() {
         </div>
         <button class="link-btn" data-act="guide">파일은 어떻게 만들어요?</button>
       </div>
+      <h2 class="sec-title"><span>기본 학습</span></h2>
+      ${irrCard()}
       <h2 class="sec-title"><span>내 단어장</span><span>${decks.length}개</span></h2>
       <div class="deck-list">
         ${decks.length ? decks.map(deckCard).join('') : `<div class="empty">아직 단어장이 없어요.<br>위에서 엑셀 파일을 불러와 주세요.</div>`}
       </div>
     </div>
   </section>`;
+}
+function irrCard() {
+  const s = deckStats(IRR_DECK);
+  return `<button class="deck-card" data-act="open-irr">
+    <div class="top"><span class="name">불규칙 동사 100</span><span class="tag">과거분사</span></div>
+    <div class="meta"><span>현재 – 과거 – 과거분사</span><span>외움 ${s.l2}/100</span></div>
+    <div class="meter" aria-hidden="true"><i class="m1" style="width:${s.l2}%"></i><i class="m2" style="width:${s.l1}%"></i></div>
+  </button>`;
 }
 function deckCard(d) {
   const s = deckStats(d), n = s.n || 1;
@@ -934,8 +965,251 @@ function deckCard(d) {
   </button>`;
 }
 
+/* ---------- irregular verbs: built-in table (불규칙 동사 변화표 100) ---------- */
+const IRR_ROWS = `be|was/were|been|이다, 있다
+become|became|become|~이 되다
+bear|bore|born|낳다
+beat|beat|beaten|치다
+begin|began|begun|시작하다
+bend|bent|bent|구부리다
+bite|bit|bitten|물다
+bleed|bled|bled|피를 흘리다
+blow|blew|blown|불다
+break|broke|broken|깨트리다
+bring|brought|brought|가져오다
+build|built|built|짓다
+buy|bought|bought|사다
+can|could||할 수 있다
+cast|cast|cast|던지다
+catch|caught|caught|잡다
+choose|chose|chosen|선택하다
+come|came|come|오다
+cost|cost|cost|값이 나가다
+cut|cut|cut|자르다
+dig|dug|dug|파다
+do|did|done|하다
+draw|drew|drawn|그리다
+drink|drank|drunk|마시다
+drive|drove|driven|운전하다
+eat|ate|eaten|먹다
+fall|fell|fallen|떨어지다
+feed|fed|fed|먹이다
+feel|felt|felt|느끼다
+fight|fought|fought|싸우다
+find|found|found|발견하다
+flee|fled|fled|도망가다
+fly|flew|flown|날다
+forgive|forgave|forgiven|용서하다
+get|got|gotten|얻다
+give|gave|given|주다
+go|went|gone|가다
+grow|grew|grown|자라다
+hang|hung|hung|걸다
+have|had|had|가지다
+hear|heard|heard|듣다
+hide|hid|hidden|숨기다
+hit|hit|hit|치다
+hold|held|held|쥐다, 개최하다
+hurt|hurt|hurt|상처내다
+keep|kept|kept|유지하다
+know|knew|known|알다
+lay|laid|laid|놓다
+lead|led|led|이끌다
+leave|left|left|떠나다
+lend|lent|lent|빌려주다
+let|let|let|시키다
+lie|lay|lain|놓여 있다, 눕다
+lose|lost|lost|잃다
+make|made|made|만들다
+may|might||해도 된다
+mean|meant|meant|의미하다
+pay|paid|paid|지불하다
+put|put|put|놓다
+read|read|read|읽다
+ride|rode|ridden|타다
+ring|rang|rung|울리다
+rise|rose|risen|오르다, 일어나다
+run|ran|run|달리다
+say|said|said|말하다
+see|saw|seen|보다
+seek|sought|sought|찾다
+sell|sold|sold|팔다
+send|sent|sent|보내다
+shake|shook|shaken|흔들다
+shine|shone|shone|빛나다
+shoot|shot|shot|쏘다
+show|showed|shown|보여 주다
+shrink|shrank|shrunk|줄어들다
+shut|shut|shut|닫다
+sing|sang|sung|노래 부르다
+sink|sank|sunk|가라앉다
+sit|sat|sat|앉다
+sleep|slept|slept|자다
+smell|smelt|smelt|냄새 맡다
+speak|spoke|spoken|말하다
+speed|sped|sped|속도를 내다
+spend|spent|spent|소비하다
+stand|stood|stood|서다
+steal|stole|stolen|훔치다
+strike|struck|struck|치다
+swear|swore|sworn|맹세하다
+swim|swam|swum|수영하다
+take|took|taken|가져가다
+teach|taught|taught|가르치다
+tear|tore|torn|찢다
+tell|told|told|말하다
+think|thought|thought|생각하다
+throw|threw|thrown|던지다
+wake|woke|woken|깨우다
+wear|wore|worn|입다
+weep|wept|wept|울다
+will|would||할 것이다
+write|wrote|written|쓰다
+win|won|won|이기다`;
+// other accepted spellings (never offered as wrong choices)
+const IRR_ALT = { get: { pp: ['got'] }, smell: { past: ['smelled'], pp: ['smelled'] }, bear: { pp: ['borne'] }, shine: { past: ['shined'], pp: ['shined'] }, hang: { past: ['hanged'], pp: ['hanged'] }, speed: { past: ['speeded'], pp: ['speeded'] } };
+const IRR = IRR_ROWS.split('\n').map((line, i) => {
+  const [t, past, pp, m] = line.split('|');
+  const it = { id: 'v:' + t, n: i + 1, t, past, pp, m, k: 'w', irr: true, alt: IRR_ALT[t] || {} };
+  it.pat = !pp ? '' : t === past && past === pp ? 'AAA' : past === pp ? 'ABB' : t === pp ? 'ABA' : 'ABC';
+  if (t === 'be') it.note = 'am·is → was, are → were';
+  return it;
+});
+function bindIrrStats() {
+  DB.irr = DB.irr || {};
+  for (const it of IRR) {
+    const st = DB.irr[it.id] || (DB.irr[it.id] = { c: 0, w: 0, last: 0 });
+    for (const k of ['c', 'w', 'last']) Object.defineProperty(it, k, { get: () => st[k], set: v => { st[k] = v; }, enumerable: true, configurable: true });
+  }
+}
+bindIrrStats();
+const IRR_DECK = { id: 'IRR', name: '불규칙 동사 100', items: IRR };
+const deckScreen = id => id === 'IRR' ? 'irr' : 'deck';
+const IRR_RANGES = ['all', '1-20', '21-40', '41-60', '61-80', '81-100'];
+const IRR_PATS = { all: '전체', ABC: 'A-B-C', ABB: 'A-B-B', AAA: 'A-A-A', ABA: 'A-B-A' };
+const IRR_PAT_HINT = { all: '변화 유형을 고르면 비슷한 동사끼리 묶어 외울 수 있어요.', ABC: 'A-B-C · 셋 다 달라요 (go – went – gone)', ABB: 'A-B-B · 과거와 과거분사가 같아요 (make – made – made)', AAA: 'A-A-A · 셋 다 같아요 (cut – cut – cut)', ABA: 'A-B-A · 원형과 과거분사가 같아요 (come – came – come)' };
+function irrSelected() {
+  const r = DB.settings.irrRange || 'all', p = DB.settings.irrPat || 'all';
+  const [lo, hi] = r === 'all' ? [1, 999] : r.split('-').map(Number);
+  return IRR.filter(v => v.n >= lo && v.n <= hi && (p === 'all' || v.pat === p));
+}
+const irrForms = it => [it.t, it.past, it.pp || '—'].join(' – ');
+const irrSay = it => [it.t, it.past.replace('/', ' or '), it.pp].filter(Boolean).join(', ');
+// strict: spelling is the point, so no typo tolerance; "was/were" accepts either or both
+function irrMatch(input, forms) {
+  const ok = new Set(forms.flatMap(x => x.split('/')).map(normText));
+  const g = normText(input);
+  if (!g) return false;
+  if (ok.has(g)) return true;
+  const chunks = input.split(/[\s\/,]+/).map(normText).filter(Boolean);
+  return chunks.length > 1 && chunks.every(c => ok.has(c));
+}
+const irrAccept = (it, f) => [it[f], ...(it.alt[f] || [])];
+function irrOptions(it, f) {
+  const ans = it[f], bad = new Set(irrAccept(it, f).flatMap(x => x.split('/')).map(x => x.toLowerCase()));
+  const shift = w => w.replace(/[aeiou]/, c => ({ a: 'u', e: 'a', i: 'a', o: 'e', u: 'a' })[c]);
+  const cand = [f === 'pp' ? it.past : it.pp, regPast(it.t), f === 'pp' ? it.t + (/e$/.test(it.t) ? 'n' : 'en') : it.t + 'ed', shift(ans), it.t, shift(it.t), ans + 'ed'];
+  const out = [];
+  for (const c of cand) {
+    if (!c) continue;
+    const k = c.toLowerCase();
+    if (bad.has(k) || k === ans.toLowerCase() || out.some(o => o.toLowerCase() === k)) continue;
+    out.push(c); if (out.length === 3) break;
+  }
+  return shuffle([ans, ...out]);
+}
+function makeIrrQ(kind, it) {
+  const q = { kind, item: it, built: [], sel: null, typed: '', tp: '', tpp: '' };
+  if (kind === 'irr-spell' && !/^[a-z]{2,12}$/.test(it.pp)) q.kind = 'irr-mc';
+  if (q.kind === 'irr-mc') { q.field = it.pp && Math.random() < 0.75 ? 'pp' : 'past'; q.ans = it[q.field]; q.opts = irrOptions(it, q.field); }
+  if (q.kind === 'irr-spell') { q.answer = it.pp.split(''); q.bank = letterBank(it.pp); }
+  return q;
+}
+function irrQueue(mode, forced) {
+  const n = DB.settings.count || 9999;
+  const sel = irrSelected().filter(v => v.pp);
+  if (mode === 'match') {
+    const items = choose(sel, Math.max(n, 5)), q = [];
+    for (let i = 0; i < items.length; i += 5) {
+      let chunk = items.slice(i, i + 5);
+      if (chunk.length < 3) chunk = chunk.concat(shuffle(items.slice(0, i)).slice(0, 3 - chunk.length));
+      if (chunk.length >= 2) q.push(makeMatch(chunk, 'pp'));
+    }
+    return q;
+  }
+  const items = forced ? forced.filter(v => v.pp) : mode === 'review' ? choose(sel.filter(v => v.w > 0 && level(v) < 2), n) : choose(sel, n);
+  const all = ['irr-mc', 'irr-type', 'irr-spell', 'irr-ko'];
+  const q = items.map(v => makeIrrQ(all.includes(mode) ? mode : (v.c + v.w === 0 ? 'irr-mc' : pick(all)), v));
+  if (mode === 'mixed' && !forced && q.length >= 6) q.splice(4, 0, makeMatch(shuffle(items).slice(0, 5), 'pp'));
+  return q;
+}
+function irrView() {
+  const st = DB.settings, sel = irrSelected(), drill = sel.filter(v => v.pp);
+  const s = deckStats({ items: sel }), n = s.n || 1;
+  const all = deckStats(IRR_DECK);
+  const wrong = drill.filter(v => v.w > 0 && level(v) < 2).length;
+  const modes = [
+    { id: 'irr-mc', name: '과거분사 고르기', sub: '헷갈리는 형태 중 고르기', icon: I.choice, ok: drill.length > 0 },
+    { id: 'irr-type', name: '3단 변화 쓰기', sub: '과거·과거분사 직접 입력', icon: I.pencil, ok: drill.length > 0 },
+    { id: 'irr-spell', name: '철자 맞추기', sub: '알파벳 타일로 과거분사', icon: I.puzzle, ok: drill.length > 0 },
+    { id: 'irr-ko', name: '뜻 보고 쓰기', sub: '뜻 → 과거분사', icon: I.help, ok: drill.length > 0 },
+    { id: 'match', name: '짝 맞추기', sub: '원형과 과거분사 연결', icon: I.match, ok: drill.length >= 2 },
+    { id: 'flash', name: '플래시카드', sub: '뒤집어 보며 외우기', icon: I.cards, ok: sel.length > 0 },
+    { id: 'review', name: '오답 복습', sub: wrong ? `헷갈리는 ${wrong}개` : '틀린 동사가 없어요', icon: I.redo, ok: wrong > 0 },
+  ];
+  const chip = (act, v, label, on) => `<button data-act="${act}" data-v="${v}" aria-pressed="${on}">${label}</button>`;
+  const hide = !!st.irrHide;
+  const cell = (it, f) => hide && !UI.revealed.has(it.id) ? `<button class="peek" data-act="peek" data-id="${it.id}" aria-label="${esc(it.t)} 보기">?</button>` : `<span>${esc(it[f] || '—')}</span>`;
+  return `<section class="screen">
+    <header class="bar wrap">
+      <button class="icon-btn" data-act="home" aria-label="뒤로">${I.back}</button>
+      <h1>불규칙 동사 100</h1>
+    </header>
+    <div class="body wrap">
+      <div class="deck-head">
+        <div class="counts">
+          <span class="stat-pill">고른 동사 <b>${sel.length}</b></span>
+          <span class="stat-pill">외움 <b>${Math.round(s.l2 / n * 100)}%</b></span>
+          <span class="stat-pill">전체 외움 <b>${all.l2}/100</b></span>
+        </div>
+        <div class="meter"><i class="m1" style="width:${s.l2 / n * 100}%"></i><i class="m2" style="width:${s.l1 / n * 100}%"></i></div>
+      </div>
+      <div class="filters">
+        <div class="chips" role="group" aria-label="범위">${IRR_RANGES.map(r => chip('irr-range', r, r === 'all' ? '전체' : r, (st.irrRange || 'all') === r)).join('')}</div>
+        <div class="chips" role="group" aria-label="변화 유형">${Object.entries(IRR_PATS).map(([k, v]) => chip('irr-pat', k, v, (st.irrPat || 'all') === k)).join('')}</div>
+        <p class="hint" style="margin:0">${IRR_PAT_HINT[st.irrPat || 'all']}</p>
+      </div>
+      <button class="btn" data-act="start" data-mode="mixed" ${drill.length ? '' : 'disabled'}>${I.play}레슨 시작</button>
+      <div class="modes">
+        ${modes.map(m => `<button class="mode" data-act="start" data-mode="${m.id}" ${m.ok ? '' : 'disabled'}>
+          <span class="ic">${m.icon}</span><b>${m.name}</b><small>${m.sub}</small></button>`).join('')}
+      </div>
+      ${settingsView()}
+      <h2 class="sec-title"><span>변화표</span><span>${sel.length}개</span></h2>
+      <div class="settings"><div class="set-row"><span>과거·과거분사 가리기</span><button class="switch" role="switch" aria-label="과거·과거분사 가리기" aria-checked="${hide}" data-act="toggle" data-k="irrHide"></button></div></div>
+      <div class="word-list">
+        ${sel.length ? sel.map(it => `<div class="irr-row"><span class="no">${it.n}</span>
+          <div class="forms"><b>${esc(it.t)}</b><i>–</i>${cell(it, 'past')}<i>–</i>${it.pp ? cell(it, 'pp') : '<span>—</span>'}</div>
+          <span class="pat">${it.pat ? it.pat.split('').join('-') : '조동사'}</span>
+          <div class="mean"><span class="dot lv${level(it)}"></span>${esc(it.m)}${it.note ? ` · ${esc(it.note)}` : ''}</div></div>`).join('') : '<div class="empty" style="border:0">이 범위에 해당하는 동사가 없어요</div>'}
+      </div>
+    </div>
+  </section>`;
+}
+
 /* ---------- views: deck ---------- */
-const rowView = it => `<div class="word-row"><span class="dot lv${level(it)}"></span><span class="t">${esc(it.t)}</span><span class="m">${it.gen ? `<span class="gen-tag">${esc(it.gen.tag)}</span>` : (esc(it.m) || '—')}</span></div>`;
+function settingsView() {
+  const cnt = DB.settings.count;
+  return `<div class="settings">
+        <div class="set-row"><span>문제 수</span>
+          <div class="seg" role="group" aria-label="문제 수">
+            ${[10, 20, 0].map(v => `<button data-act="set-count" data-v="${v}" aria-pressed="${cnt === v}">${v || '전체'}</button>`).join('')}
+          </div></div>
+        <div class="set-row"><span>효과음</span><button class="switch" role="switch" aria-label="효과음" aria-checked="${DB.settings.sound}" data-act="toggle" data-k="sound"></button></div>
+        <div class="set-row"><span>영어 자동 발음</span><button class="switch" role="switch" aria-label="영어 자동 발음" aria-checked="${DB.settings.autoplay && TTS}" data-act="toggle" data-k="autoplay" ${TTS ? '' : 'disabled'}></button></div>
+      </div>`;
+}
+const rowView = it => it.irr ? `<div class="word-row"><span class="dot lv${level(it)}"></span><span class="t">${esc(irrForms(it))}</span><span class="m">${esc(it.m)}</span></div>` : `<div class="word-row"><span class="dot lv${level(it)}"></span><span class="t">${esc(it.t)}</span><span class="m">${it.gen ? `<span class="gen-tag">${esc(it.gen.tag)}</span>` : (esc(it.m) || '—')}</span></div>`;
 function deckView() {
   const d = deckById(UI.deckId); if (!d) { UI.screen = 'home'; return homeView(); }
   const s = deckStats(d), n = s.n || 1;
@@ -982,14 +1256,7 @@ function deckView() {
           ${s.g ? `<button class="btn ghost sm" data-act="unexpand">확장 지우기</button>` : ''}
         </div>
       </div>
-      <div class="settings">
-        <div class="set-row"><span>문제 수</span>
-          <div class="seg" role="group" aria-label="문제 수">
-            ${[10, 20, 0].map(v => `<button data-act="set-count" data-v="${v}" aria-pressed="${cnt === v}">${v || '전체'}</button>`).join('')}
-          </div></div>
-        <div class="set-row"><span>효과음</span><button class="switch" role="switch" aria-label="효과음" aria-checked="${DB.settings.sound}" data-act="toggle" data-k="sound"></button></div>
-        <div class="set-row"><span>영어 자동 발음</span><button class="switch" role="switch" aria-label="영어 자동 발음" aria-checked="${DB.settings.autoplay && TTS}" data-act="toggle" data-k="autoplay" ${TTS ? '' : 'disabled'}></button></div>
-      </div>
+      ${settingsView()}
       <h2 class="sec-title"><span>항목</span><span>${d.items.length}개</span></h2>
       <div class="add-row">
         <button class="btn ghost sm" data-act="add-file">${I.upload}엑셀로 추가</button>
@@ -1049,6 +1316,7 @@ function letterBank(word) {
   return shuffle(letters.concat(extra)).map((t, i) => ({ i, t }));
 }
 function makeQ(kind, it, pool) {
+  if (it && it.irr) return makeIrrQ(kind, it);
   const q = { kind, item: it, built: [], sel: null, typed: '' };
   if (kind === 'mc-en') q.opts = optionsFor(it, pool, 'm');
   else if (kind === 'mc-ko') q.opts = optionsFor(it, pool, 't');
@@ -1059,9 +1327,9 @@ function makeQ(kind, it, pool) {
   if ((kind === 'mc-en' || kind === 'mc-ko') && q.opts.length < 2) return makeQ(it.k === 'w' ? 'type' : 'build-en', it, pool);
   return q;
 }
-function makeMatch(items) {
+function makeMatch(items, rf) {
   const pairs = items.slice(0, 5);
-  return { kind: 'match', item: null, pairs, left: shuffle(pairs.map(p => p.id)), right: shuffle(pairs.map(p => p.id)), done: new Set(), sel: null, flash: null, mistakes: 0 };
+  return { kind: 'match', rf: rf || 'm', item: null, pairs, left: shuffle(pairs.map(p => p.id)), right: shuffle(pairs.map(p => p.id)), done: new Set(), sel: null, flash: null, mistakes: 0 };
 }
 function weightOf(it) { return 1 + it.w * 2 + (it.c + it.w === 0 ? 1.5 : 0) - Math.min(it.c, 5) * 0.25 + Math.min((Date.now() - (it.last || 0)) / 864e5, 7) * 0.1; }
 function choose(items, n) {
@@ -1071,6 +1339,7 @@ function choose(items, n) {
 }
 
 function buildQueue(mode, d, forced) {
+  if (d.id === 'IRR') return irrQueue(mode, forced);
   const pool = d.items;
   const n = DB.settings.count || 9999;
   const quizzable = pool.filter(it => kindsFor(it).length);
@@ -1124,6 +1393,7 @@ const curQ = () => L && L.queue[L.idx];
 function record(it, ok) { if (!it) return; ok ? it.c++ : it.w++; it.last = Date.now(); }
 function answerText(q) {
   const it = q.item;
+  if (it.irr) return irrForms(it);
   if (q.kind === 'mc-en' || q.kind === 'build-ko') return it.m;
   return it.t;
 }
@@ -1145,7 +1415,8 @@ function submit(ok, note) {
   if (q.item) record(q.item, ok);
   save();
   renderLesson();
-  if (DB.settings.autoplay && q.item && ['mc-ko', 'type', 'spell', 'build-en', 'order', 'transform'].includes(q.kind)) speak(q.item.t);
+  if (DB.settings.autoplay && q.item && q.item.irr) speak(irrSay(q.item));
+  else if (DB.settings.autoplay && q.item && ['mc-ko', 'type', 'spell', 'build-en', 'order', 'transform'].includes(q.kind)) speak(q.item.t);
 }
 function nextQ() {
   if (!L) return;
@@ -1156,6 +1427,7 @@ function nextQ() {
 }
 function autoSpeak() {
   const q = curQ(); if (!q || !q.item || !DB.settings.autoplay) return;
+  if (q.item.irr) { if (q.kind !== 'irr-ko') setTimeout(() => speak(q.item.t), 250); return; }
   if (['mc-en', 'build-ko', 'listen'].includes(q.kind)) setTimeout(() => speak(q.item.t), 250);
 }
 function finishLesson() {
@@ -1173,8 +1445,9 @@ const fmtTime = ms => { const s = Math.round(ms / 1000); return Math.floor(s / 6
 
 /* checks */
 function canCheck(q) {
-  if (q.kind === 'mc-en' || q.kind === 'mc-ko') return q.sel != null;
-  if (q.kind === 'type') return q.typed.trim().length > 0;
+  if (q.kind === 'mc-en' || q.kind === 'mc-ko' || q.kind === 'irr-mc') return q.sel != null;
+  if (q.kind === 'irr-type') return q.tp.trim().length > 0 && q.tpp.trim().length > 0;
+  if (q.kind === 'type' || q.kind === 'irr-ko') return q.typed.trim().length > 0;
   if (q.kind === 'match') return false;
   return q.built.length > 0;
 }
@@ -1185,7 +1458,13 @@ function check() {
     const v = judgeTyped(q.typed, q.item.t);
     return submit(v.ok, v.note);
   }
-  if (q.kind === 'spell') return submit(q.built.map(i => q.bank[i].t).join('').toLowerCase() === q.answer.join('').toLowerCase());
+  if (q.kind === 'irr-mc') return submit(q.opts[q.sel] === q.ans);
+  if (q.kind === 'irr-type') {
+    const a = irrMatch(q.tp, irrAccept(q.item, 'past')), b = irrMatch(q.tpp, irrAccept(q.item, 'pp'));
+    return submit(a && b, a && !b ? '과거분사가 틀렸어요' : !a && b ? '과거형이 틀렸어요' : '');
+  }
+  if (q.kind === 'irr-ko') return submit(irrMatch(q.typed, IRR.filter(v => v.pp && v.m === q.item.m).flatMap(v => irrAccept(v, 'pp'))));
+  if (q.kind === 'spell' || q.kind === 'irr-spell') return submit(q.built.map(i => q.bank[i].t).join('').toLowerCase() === q.answer.join('').toLowerCase());
   const got = q.built.map(i => normTok(q.bank[i].t)).join(' ');
   const forms = q.kind === 'build-ko' ? [q.item.m] : [q.answer.join(' ')].concat(termInfo(q.item.t).vars);
   submit(answerKeys(forms).has(got));
@@ -1232,6 +1511,10 @@ const LABEL = {
   'spell': () => '철자를 맞춰 보세요',
   'type': () => '영어로 써 보세요',
   'match': () => '짝을 맞춰 보세요',
+  'irr-mc': (it, q) => `${q.field === 'pp' ? '과거분사' : '과거형'}를 고르세요`,
+  'irr-type': () => '과거형과 과거분사를 써 보세요',
+  'irr-spell': () => '과거분사 철자를 맞춰 보세요',
+  'irr-ko': () => '뜻을 보고 과거분사를 써 보세요',
   'transform': it => esc(it.gen.label),
 };
 const bigCls = s => (String(s).length > 28 ? ' long' : '');
@@ -1247,7 +1530,7 @@ function lessonView() {
     </header>
     <main class="q-body wrap" id="qbody">
       ${q.retry ? `<span class="q-retry">${I.redo}다시 풀어 볼까요</span>` : ''}
-      <h2 class="q-label">${LABEL[q.kind](q.item)}</h2>
+      <h2 class="q-label">${LABEL[q.kind](q.item, q)}</h2>
       ${questionBody(q)}
     </main>
     ${footView(q)}
@@ -1285,12 +1568,32 @@ function questionBody(q) {
         <div class="answer-zone" aria-label="내 답">${q.built.map((bi, pos) => `<button class="tile${ko}" data-act="unbuild" data-pos="${pos}" ${lock}>${esc(q.bank[bi].t)}</button>`).join('')}</div>
         <div class="bank">${q.bank.map(b => `<button class="tile${ko}${q.built.includes(b.i) ? ' used' : ''}" data-act="build" data-i="${b.i}" ${lock} ${q.built.includes(b.i) ? 'tabindex="-1" aria-hidden="true"' : ''}>${esc(b.t)}</button>`).join('')}</div>`;
     }
+    case 'irr-mc': {
+      const known = q.field === 'pp' ? [it.t, '…', '?'] : [it.t, '?', '…'];
+      return `${irrPrompt(it, spk)}<div class="irr-strip">${known.map(x => `<span${x === '?' ? ' class="q"' : ''}>${esc(x)}</span>`).join('<i>–</i>')}</div>
+        <div class="options">${q.opts.map((o, i) => {
+          let cls = '';
+          if (L.answered) { if (o === q.ans) cls = ' right'; else if (i === q.sel) cls = ' wrong'; }
+          return `<button class="tile${cls}" data-act="opt" data-i="${i}" aria-pressed="${q.sel === i && !L.answered}" ${lock}><span class="n">${i + 1}</span><span>${esc(o)}</span></button>`;
+        }).join('')}</div>`;
+    }
+    case 'irr-type':
+      return `${irrPrompt(it, spk)}
+        <div class="irr-inputs">
+          <label for="irr-past">과거<input id="irr-past" class="type-box" value="${esc(q.tp)}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" ${lock}></label>
+          <label for="irr-pp">과거분사<input id="irr-pp" class="type-box" value="${esc(q.tpp)}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done" ${lock}></label>
+        </div>`;
+    case 'irr-ko':
+      return `<div class="prompt"><span class="big ko${bigCls(it.m)}">${esc(it.m)}</span></div>
+        <textarea id="type-in" class="type-box" rows="2" placeholder="과거분사 입력" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done" ${lock}>${esc(q.typed)}</textarea>
+        <span class="hint">동사원형은 ${esc(it.t[0])}로 시작해요</span>`;
+    case 'irr-spell':
     case 'spell': {
       const slots = q.answer.map((_, i) => {
         const bi = q.built[i];
         return bi != null ? `<button class="slot filled" data-act="unbuild" data-pos="${i}" ${lock}>${esc(q.bank[bi].t)}</button>` : `<span class="slot"></span>`;
       }).join('');
-      return `<div class="prompt"><span class="big ko${bigCls(it.m)}">${esc(it.m)}</span></div>
+      return `${it.irr ? irrPrompt(it, spk) + `<div class="irr-strip"><span>${esc(it.t)}</span><i>–</i><span>…</span><i>–</i><span class="q">?</span></div>` : `<div class="prompt"><span class="big ko${bigCls(it.m)}">${esc(it.m)}</span></div>`}
         <div class="answer-zone letters" aria-label="내 답">${slots}</div>
         <div class="bank letters">${q.bank.map(b => `<button class="tile${q.built.includes(b.i) ? ' used' : ''}" data-act="build" data-i="${b.i}" ${lock || (q.built.length >= q.answer.length && !q.built.includes(b.i) ? 'disabled' : '')}>${esc(b.t)}</button>`).join('')}</div>`;
     }
@@ -1302,7 +1605,7 @@ function questionBody(q) {
       const fl = q.flash || {};
       const cell = (side, id) => {
         const p = q.pairs.find(x => x.id === id);
-        const txt = side === 'l' ? p.t : p.m;
+        const txt = side === 'l' ? p.t : p[q.rf || 'm'];
         let cls = q.done.has(id) ? ' done' : '';
         if (fl.ok && fl.ids.includes(id)) cls += ' right';
         if (fl.ok === false && fl[side] === id) cls += ' wrong shake';
@@ -1314,6 +1617,7 @@ function questionBody(q) {
   }
   return '';
 }
+const irrPrompt = (it, spk) => `<div class="prompt">${spk(it.t)}<span class="big">${esc(it.t)}</span><span class="irr-m">${esc(it.m)}${it.note ? `<small>${esc(it.note)}</small>` : ''}</span></div>`;
 function typeHint(t) {
   const { main, vars } = termInfo(t);
   if (vars.length > 1) return `정답이 ${vars.length}개예요 · 하나만 써도 돼요 (${esc(main[0])}로 시작하는 것 포함)`;
@@ -1322,7 +1626,7 @@ function typeHint(t) {
 const PRAISE = ['정답이에요!', '좋아요!', '훌륭해요!', '완벽해요!', '잘했어요!'];
 function footView(q) {
   if (!L.answered) {
-    if (q.kind === 'match') return `<footer class="foot"><div class="wrap"><p class="hint" style="margin:0;text-align:center">왼쪽 영어와 오른쪽 뜻을 하나씩 눌러 연결하세요</p></div></footer>`;
+    if (q.kind === 'match') return `<footer class="foot"><div class="wrap"><p class="hint" style="margin:0;text-align:center">${q.rf === 'pp' ? '왼쪽 동사원형과 오른쪽 과거분사를' : '왼쪽 영어와 오른쪽 뜻을'} 하나씩 눌러 연결하세요</p></div></footer>`;
     return `<footer class="foot"><div class="wrap row">
       <button class="btn ghost" data-act="giveup">모르겠어요</button>
       <button class="btn" id="check-btn" data-act="check" ${canCheck(q) ? '' : 'disabled'}>확인</button>
@@ -1331,15 +1635,15 @@ function footView(q) {
   const it = q.item;
   if (L.ok) {
     const title = L.combo >= 3 ? `${L.combo}연속 정답!` : pick(PRAISE);
-    const detail = it ? `<p>${esc(it.t)}<small>${esc(it.m)}</small></p>` : (L.note ? `<p><small>${esc(L.note)}</small></p>` : '');
+    const detail = it ? `<p>${esc(it.irr ? irrForms(it) : it.t)}<small>${esc(it.m)}</small></p>` : (L.note ? `<p><small>${esc(L.note)}</small></p>` : '');
     return `<footer class="foot ok"><div class="wrap" style="display:flex;flex-direction:column;gap:14px">
-      <div class="fb"><span class="badge">${I.check}</span><div class="txt"><h3>${title}</h3>${L.note && it ? `<p><small>${esc(L.note)}</small></p>` : ''}${detail}</div>${it && TTS ? `<button class="speak sm" data-act="say" data-t="${esc(it.t)}" aria-label="발음 듣기">${I.speaker}</button>` : ''}</div>
+      <div class="fb"><span class="badge">${I.check}</span><div class="txt"><h3>${title}</h3>${L.note && it ? `<p><small>${esc(L.note)}</small></p>` : ''}${detail}</div>${it && TTS ? `<button class="speak sm" data-act="say" data-t="${esc(it.irr ? irrSay(it) : it.t)}" aria-label="발음 듣기">${I.speaker}</button>` : ''}</div>
       <button class="btn good" data-act="next" id="next-btn">계속</button></div></footer>`;
   }
   const ans = answerText(q);
-  const other = ans === it.t ? (it.m || (it.gen ? '원래 문장: ' + it.gen.from : '')) : it.t;
+  const other = it.irr ? it.m : ans === it.t ? (it.m || (it.gen ? '원래 문장: ' + it.gen.from : '')) : it.t;
   return `<footer class="foot bad"><div class="wrap" style="display:flex;flex-direction:column;gap:14px">
-    <div class="fb"><span class="badge">${I.x}</span><div class="txt"><h3>정답</h3><p>${esc(ans)}${other ? `<small>${esc(other)}</small>` : ''}</p></div>${TTS ? `<button class="speak sm" data-act="say" data-t="${esc(it.t)}" aria-label="발음 듣기">${I.speaker}</button>` : ''}</div>
+    <div class="fb"><span class="badge">${I.x}</span><div class="txt"><h3>정답</h3><p>${esc(ans)}${other ? `<small>${esc(other)}</small>` : ''}</p></div>${TTS ? `<button class="speak sm" data-act="say" data-t="${esc(it.irr ? irrSay(it) : it.t)}" aria-label="발음 듣기">${I.speaker}</button>` : ''}</div>
     <button class="btn bad" data-act="next" id="next-btn">계속</button></div></footer>`;
 }
 
@@ -1348,7 +1652,8 @@ function startFlash() {
   const d = deckById(UI.deckId); if (!d || !d.items.length) return;
   const n = DB.settings.count || 9999;
   d.used = Date.now(); save();
-  const items = choose(d.items, n);
+  const items = choose(d.id === 'IRR' ? irrSelected() : d.items, n);
+  if (!items.length) return;
   F = { deckId: d.id, queue: items.slice(), idx: 0, total: items.length, known: 0, again: new Map(), flipped: false, start: Date.now() };
   go('flash');
   if (DB.settings.autoplay) setTimeout(() => speak(items[0].t), 250);
@@ -1364,9 +1669,9 @@ function flashView() {
     <main class="q-body wrap">
       <div class="flash-stage">
         <div class="card${F.flipped ? ' flipped' : ''}" id="card" data-act="flip" role="button" tabindex="0" aria-label="카드 뒤집기">
-          <div class="face front"><span class="swipe-tag a">다시</span><span class="swipe-tag k">알아요</span><small>${it.k === 's' ? '문장' : '단어'} · 탭해서 뒤집기</small><span class="w${bigCls(it.t)}">${esc(it.t)}</span>
+          <div class="face front"><span class="swipe-tag a">다시</span><span class="swipe-tag k">알아요</span><small>${it.irr ? '동사원형' : it.k === 's' ? '문장' : '단어'} · 탭해서 뒤집기</small><span class="w${bigCls(it.t)}">${esc(it.t)}</span>
             ${TTS ? `<button class="speak" data-act="say" data-t="${esc(it.t)}" aria-label="발음 듣기">${I.speaker}</button>` : ''}</div>
-          <div class="face back"><small>${it.gen ? esc(it.gen.tag) + ' · 원래 문장' : '뜻'}</small><span class="w${bigCls(it.gen ? it.gen.from : it.m)}">${it.gen ? esc(it.gen.from) : (esc(it.m) || '뜻이 비어 있어요')}</span><small style="text-transform:none">${esc(it.t)}</small></div>
+          ${it.irr ? `<div class="face back"><small>과거 · 과거분사</small><span class="w">${esc(it.past)}<br>${esc(it.pp || '—')}</span><small style="text-transform:none">${esc(it.t)} · ${esc(it.m)}</small></div>` : `<div class="face back"><small>${it.gen ? esc(it.gen.tag) + ' · 원래 문장' : '뜻'}</small><span class="w${bigCls(it.gen ? it.gen.from : it.m)}">${it.gen ? esc(it.gen.from) : (esc(it.m) || '뜻이 비어 있어요')}</span><small style="text-transform:none">${esc(it.t)}</small></div>`}
         </div>
       </div>
       <p class="hint" style="margin:0;text-align:center">왼쪽으로 밀면 다시, 오른쪽으로 밀면 알아요</p>
@@ -1473,6 +1778,7 @@ function modalView() {
       <li>네 단어 이상이거나 마침표로 끝나면 <b>문장</b>으로 보고 문장 만들기 문제를 내요.</li>
       <li><code>예문</code>, <code>예문해석</code> 열을 추가하면 예문도 문장 문제로 들어가요.</li>
       <li>이미 만든 단어장에는 단어장 화면의 <b>엑셀로 추가</b> · <b>붙여넣어 추가</b>로 더 넣을 수 있어요. 겹치는 항목은 건너뛰어요.</li>
+      <li>첫 화면의 <b>불규칙 동사 100</b>은 엑셀 없이 바로 과거·과거분사를 연습하는 기본 단어장이에요.</li>
       <li>시트를 여러 개 쓰면 Day별로 단어장을 나눌 수 있어요.</li>
       <li>.xlsx, .xls, .csv, .txt 모두 읽어요.</li>
     </ul>
@@ -1488,6 +1794,7 @@ function render(reset) {
   let html;
   switch (UI.screen) {
     case 'deck': html = deckView(); break;
+    case 'irr': html = irrView(); break;
     case 'lesson': html = L ? lessonView() : homeView(); break;
     case 'flash': html = F ? flashView() : homeView(); break;
     case 'result': html = R ? resultView() : homeView(); break;
@@ -1508,6 +1815,13 @@ function afterRender() {
     if (ta) {
       ta.addEventListener('input', () => { q.typed = ta.value.replace(/\n/g, ''); if (ta.value.includes('\n')) { ta.value = q.typed; check(); return; } const b = $('#check-btn'); if (b) b.disabled = !canCheck(q); });
       if (!L.answered) setTimeout(() => ta.focus(), 50);
+    }
+    const ip = $('#irr-past'), ipp = $('#irr-pp');
+    if (ip && ipp) {
+      const upd = () => { q.tp = ip.value; q.tpp = ipp.value; const b = $('#check-btn'); if (b) b.disabled = !canCheck(q); };
+      ip.addEventListener('input', upd); ipp.addEventListener('input', upd);
+      ip.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); ipp.focus(); } });
+      if (!L.answered) setTimeout(() => (q.tp ? ipp : ip).focus(), 50);
     }
     const nb = $('#next-btn'); if (nb) nb.focus({ preventScroll: true });
   }
@@ -1598,6 +1912,10 @@ const ACT = {
   'backdrop': (el, e) => { if (e.target === el && UI.modal && UI.modal.type !== 'quit') { UI.modal = null; render(); } },
   'home': () => { UI.screen = 'home'; UI.modal = null; render(true); },
   'open-deck': el => go('deck', { deckId: el.dataset.id, showAll: false }),
+  'open-irr': () => go('irr', { deckId: 'IRR' }),
+  'irr-range': el => { DB.settings.irrRange = el.dataset.v; save(); render(); },
+  'irr-pat': el => { DB.settings.irrPat = el.dataset.v; save(); render(); },
+  'peek': el => { UI.revealed.add(el.dataset.id); render(); },
   'show-all': () => { UI.showAll = !UI.showAll; render(); },
   'expand': () => {
     const d = deckById(UI.deckId); if (!d) return;
@@ -1606,7 +1924,7 @@ const ACT = {
   },
   'unexpand': () => { const d = deckById(UI.deckId); if (!d) return; d.items = d.items.filter(i => !i.gen); save(); render(); toast('확장 문장을 지웠어요'); },
   'set-count': el => { DB.settings.count = +el.dataset.v; save(); render(); },
-  'toggle': el => { const k = el.dataset.k; DB.settings[k] = !DB.settings[k]; save(); render(); },
+  'toggle': el => { const k = el.dataset.k; DB.settings[k] = !DB.settings[k]; if (k === 'irrHide') UI.revealed.clear(); save(); render(); },
   'ask-delete': () => { UI.modal = { type: 'delete' }; render(); },
   'delete': () => { DB.decks = DB.decks.filter(d => d.id !== UI.deckId); save(); UI.modal = null; UI.screen = 'home'; render(true); toast('단어장을 삭제했어요'); },
   'start': el => el.dataset.mode === 'flash' ? startFlash() : startLesson(el.dataset.mode),
@@ -1614,9 +1932,9 @@ const ACT = {
   'opt': el => { const q = curQ(); if (L.answered) return; q.sel = +el.dataset.i; const ot = q.opts[q.sel]; if (q.kind === 'mc-ko' && DB.settings.autoplay) speak(ot); renderLesson(); },
   'build': el => {
     const q = curQ(); if (L.answered) return; const i = +el.dataset.i;
-    if (q.built.includes(i) || (q.kind === 'spell' && q.built.length >= q.answer.length)) return;
+    if (q.built.includes(i) || ((q.kind === 'spell' || q.kind === 'irr-spell') && q.built.length >= q.answer.length)) return;
     q.built.push(i);
-    if (q.kind !== 'spell' && q.kind !== 'build-ko' && DB.settings.autoplay && TTS) speak(q.bank[i].t);
+    if (q.kind !== 'spell' && q.kind !== 'irr-spell' && q.kind !== 'build-ko' && DB.settings.autoplay && TTS) speak(q.bank[i].t);
     renderLesson();
   },
   'unbuild': el => { const q = curQ(); if (L.answered) return; q.built.splice(+el.dataset.pos, 1); renderLesson(); },
@@ -1625,12 +1943,12 @@ const ACT = {
   'next': nextQ,
   'mt': el => matchTap(el.dataset.side, el.dataset.id),
   'ask-quit': () => { UI.modal = { type: 'quit' }; render(); },
-  'quit': () => { stopTimer(); L = null; F = null; UI.modal = null; UI.screen = 'deck'; render(true); },
+  'quit': () => { stopTimer(); L = null; F = null; UI.modal = null; UI.screen = deckScreen(UI.deckId); render(true); },
   'flip': (el) => { if (el.dataset.swiped) { delete el.dataset.swiped; return; } F.flipped = !F.flipped; el.classList.toggle('flipped', F.flipped); },
   'fc-know': () => flashAnswer(true),
   'fc-again': () => flashAnswer(false),
   'retry-missed': () => { const d = deckById(R.deckId); if (!d) return; UI.deckId = d.id; const ids = new Set(R.missed.map(i => i.id)); startLesson('mixed', shuffle(d.items.filter(i => ids.has(i.id)))); },
-  'back-deck': () => { UI.deckId = R.deckId; UI.screen = deckById(R.deckId) ? 'deck' : 'home'; render(true); },
+  'back-deck': () => { UI.deckId = R.deckId; UI.screen = deckById(R.deckId) ? deckScreen(R.deckId) : 'home'; render(true); },
   'paste-save': () => {
     const pairs = parseText(UI.pasteText || ''); if (!pairs.length) return;
     const target = UI.pasteTarget && deckById(UI.pasteTarget);
@@ -1654,7 +1972,7 @@ document.addEventListener('keydown', e => {
   if (UI.screen === 'lesson' && L) {
     const q = curQ();
     if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); L.answered ? nextQ() : check(); return; }
-    if (!L.answered && (q.kind === 'mc-en' || q.kind === 'mc-ko') && /^[1-4]$/.test(e.key) && +e.key <= q.opts.length) { q.sel = +e.key - 1; renderLesson(); }
+    if (!L.answered && (q.kind === 'mc-en' || q.kind === 'mc-ko' || q.kind === 'irr-mc') && /^[1-4]$/.test(e.key) && +e.key <= q.opts.length) { q.sel = +e.key - 1; renderLesson(); }
   }
   if (UI.screen === 'flash' && F) {
     if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); F.flipped = !F.flipped; $('#card')?.classList.toggle('flipped', F.flipped); }
@@ -1669,7 +1987,8 @@ window.addEventListener('popstate', () => {
     UI.modal = { type: 'quit' }; render(); return;
   }
   if (UI.modal) { UI.modal = null; render(); return; }
-  if (UI.screen === 'result' || (UI.screen === 'paste' && UI.pasteTarget)) { UI.pasteTarget = null; UI.screen = 'deck'; render(true); return; }
+  if (UI.screen === 'result') { UI.screen = deckScreen(UI.deckId); render(true); return; }
+  if (UI.screen === 'paste' && UI.pasteTarget) { UI.pasteTarget = null; UI.screen = 'deck'; render(true); return; }
   UI.screen = 'home'; render(true);
 });
 const app = $('#app');
